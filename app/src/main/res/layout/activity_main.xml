@@ -35,7 +35,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
-                android:text="v0.4.3"
+                android:text="v0.4.4"
                 android:textColor="#7F8793"
                 android:textSize="10sp" />
         </LinearLayout>
@@ -159,7 +159,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="7dp"
-                android:text="Drag handles • pinch zoom • drag to pan"
+                android:text="Tap = playhead • hold + drag = select • pinch = zoom • drag = pan"
                 android:textColor="#626A76"
                 android:textSize="9sp" />
         </LinearLayout>

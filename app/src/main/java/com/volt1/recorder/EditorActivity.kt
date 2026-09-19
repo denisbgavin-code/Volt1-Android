@@ -2,6 +2,7 @@ package com.volt1.recorder
 
 import android.app.Activity
 import android.content.ContentUris
+import android.content.Intent
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -10,6 +11,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -92,7 +94,7 @@ class EditorActivity : Activity() {
         findViewById<Button>(
             R.id.refreshRecordings
         ).setOnClickListener {
-            refreshRecordings()
+            openWavPicker()
         }
 
         recordingSpinner.onItemSelectedListener =
@@ -168,6 +170,105 @@ class EditorActivity : Activity() {
     override fun onDestroy() {
         player.stop()
         super.onDestroy()
+    }
+
+    private fun openWavPicker() {
+        val intent = Intent(
+            Intent.ACTION_OPEN_DOCUMENT
+        ).apply {
+            addCategory(
+                Intent.CATEGORY_OPENABLE
+            )
+            type = "*/*"
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+        }
+
+        startActivityForResult(
+            intent,
+            REQUEST_OPEN_WAV
+        )
+    }
+
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(
+            requestCode,
+            resultCode,
+            data
+        )
+
+        if (
+            requestCode != REQUEST_OPEN_WAV ||
+            resultCode != RESULT_OK
+        ) {
+            return
+        }
+
+        val uri =
+            data?.data ?: return
+
+        val takeFlags =
+            data.flags and
+                (
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+
+        runCatching {
+            contentResolver
+                .takePersistableUriPermission(
+                    uri,
+                    takeFlags and
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+        }
+
+        val displayName =
+            resolveDisplayName(uri)
+
+        editorStatusView.text =
+            "Открыт внешний WAV: $displayName"
+
+        loadRecording(
+            RecordingItem(
+                uri = uri,
+                name = displayName
+            )
+        )
+    }
+
+    private fun resolveDisplayName(
+        uri: Uri
+    ): String {
+        contentResolver.query(
+            uri,
+            arrayOf(
+                OpenableColumns.DISPLAY_NAME
+            ),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (
+                cursor.moveToFirst() &&
+                !cursor.isNull(0)
+            ) {
+                return cursor.getString(0)
+            }
+        }
+
+        return uri.lastPathSegment
+            ?.substringAfterLast('/')
+            ?.takeIf {
+                it.isNotBlank()
+            }
+            ?: "selected_audio.wav"
     }
 
     private fun refreshRecordings(
@@ -709,6 +810,7 @@ class EditorActivity : Activity() {
     companion object {
         private const val SEEK_MAX = 10_000
         private const val MIN_SEEK_GAP = 1
+        private const val REQUEST_OPEN_WAV = 4101
     }
 }
 

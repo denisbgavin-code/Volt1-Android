@@ -68,9 +68,6 @@ class MainActivity : Activity() {
     private lateinit var playButton:
         Button
 
-    private lateinit var stopPlaybackButton:
-        Button
-
     private lateinit var deleteButton:
         Button
 
@@ -302,7 +299,11 @@ class MainActivity : Activity() {
                         !recording
 
                 stopButton.isEnabled =
-                    recording
+                    recording ||
+                        (
+                            !recording &&
+                                info != null
+                            )
 
                 openFileButton.isEnabled =
                     !recording
@@ -312,10 +313,6 @@ class MainActivity : Activity() {
                         info != null
 
                 playButton.isEnabled =
-                    !recording &&
-                        info != null
-
-                stopPlaybackButton.isEnabled =
                     !recording &&
                         info != null
 
@@ -414,11 +411,6 @@ class MainActivity : Activity() {
                 R.id.playSelection
             )
 
-        stopPlaybackButton =
-            findViewById(
-                R.id.stopPlayback
-            )
-
         deleteButton =
             findViewById(
                 R.id.deleteSelection
@@ -461,15 +453,21 @@ class MainActivity : Activity() {
 
         stopButton
             .setOnClickListener {
-                startService(
-                    Intent(
-                        this,
-                        RecorderService::class.java
-                    ).apply {
-                        action =
-                            RecorderService.ACTION_STOP
-                    }
-                )
+                if (
+                    RecorderService.recording
+                ) {
+                    startService(
+                        Intent(
+                            this,
+                            RecorderService::class.java
+                        ).apply {
+                            action =
+                                RecorderService.ACTION_STOP
+                        }
+                    )
+                } else {
+                    player.stop()
+                }
             }
 
         openFileButton
@@ -487,11 +485,6 @@ class MainActivity : Activity() {
                 playSelection()
             }
 
-        stopPlaybackButton
-            .setOnClickListener {
-                player.stop()
-            }
-
         deleteButton
             .setOnClickListener {
                 deleteSelection()
@@ -504,7 +497,7 @@ class MainActivity : Activity() {
 
         saveAsButton
             .setOnClickListener {
-                saveAs()
+                openSaveAsPicker()
             }
 
         audioManager
@@ -737,8 +730,6 @@ class MainActivity : Activity() {
         )
 
         if (
-            requestCode !=
-            REQUEST_OPEN_WAV ||
             resultCode !=
             RESULT_OK
         ) {
@@ -748,40 +739,52 @@ class MainActivity : Activity() {
         val uri =
             data?.data ?: return
 
-        val takeFlags =
-            data.flags and
-                (
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        when (
+            requestCode
+        ) {
+            REQUEST_OPEN_WAV -> {
+                val takeFlags =
+                    data.flags and
+                        (
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            )
+
+                runCatching {
+                    contentResolver
+                        .takePersistableUriPermission(
+                            uri,
+                            takeFlags and
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                }
+
+                clearWorkingCopy()
+
+                val displayName =
+                    resolveDisplayName(
+                        uri
                     )
 
-        runCatching {
-            contentResolver
-                .takePersistableUriPermission(
-                    uri,
-                    takeFlags and
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                sessionDisplayName =
+                    displayName
+
+                editDirty =
+                    false
+
+                loadRecording(
+                    uri = uri,
+                    displayName =
+                        displayName
                 )
+            }
+
+            REQUEST_SAVE_WAV -> {
+                saveAsToUri(
+                    uri
+                )
+            }
         }
-
-        clearWorkingCopy()
-
-        val displayName =
-            resolveDisplayName(
-                uri
-            )
-
-        sessionDisplayName =
-            displayName
-
-        editDirty =
-            false
-
-        loadRecording(
-            uri = uri,
-            displayName =
-                displayName
-        )
     }
 
     private fun resolveDisplayName(
@@ -1218,7 +1221,51 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveAs() {
+    private fun openSaveAsPicker() {
+        val info =
+            currentInfo ?: return
+
+        val baseName =
+            (
+                sessionDisplayName
+                    ?: info.displayName
+                )
+                .removeSuffix(
+                    ".wav"
+                )
+                .removeSuffix(
+                    ".WAV"
+                )
+                .ifBlank {
+                    "Volt1_Edit"
+                }
+
+        val intent =
+            Intent(
+                Intent.ACTION_CREATE_DOCUMENT
+            ).apply {
+                addCategory(
+                    Intent.CATEGORY_OPENABLE
+                )
+
+                type =
+                    "audio/wav"
+
+                putExtra(
+                    Intent.EXTRA_TITLE,
+                    "${baseName}_edit.wav"
+                )
+            }
+
+        startActivityForResult(
+            intent,
+            REQUEST_SAVE_WAV
+        )
+    }
+
+    private fun saveAsToUri(
+        destinationUri: Uri
+    ) {
         val info =
             currentInfo ?: return
 
@@ -1226,58 +1273,37 @@ class MainActivity : Activity() {
 
         setEditingBusy(
             true,
-            "Saving current edit…"
+            "Saving WAV…"
         )
-
-        val baseName =
-            sessionDisplayName
-                ?: info.displayName
 
         Thread {
             try {
-                val newName =
-                    WavFile.saveAsCopy(
-                        context = this,
-                        info = info,
-                        baseDisplayName =
-                            baseName
-                    )
+                WavFile.exportToUri(
+                    context = this,
+                    info = info,
+                    destinationUri =
+                        destinationUri
+                )
 
-                val newUri =
-                    findMediaStoreUri(
-                        newName
+                val savedName =
+                    resolveDisplayName(
+                        destinationUri
                     )
-                    ?: error(
-                        "Сохранённый WAV не найден в MediaStore"
-                    )
-
-                val oldWorking =
-                    workingUri
-
-                workingUri =
-                    null
 
                 editDirty =
                     false
 
                 sessionDisplayName =
-                    newName
-
-                WavFile.discardPending(
-                    this,
-                    oldWorking
-                )
+                    savedName
 
                 runOnUiThread {
                     setEditingBusy(
                         false,
-                        "Saved: $newName"
+                        "Saved: $savedName"
                     )
 
-                    loadRecording(
-                        newUri,
-                        newName
-                    )
+                    fileView.text =
+                        savedName
                 }
 
             } catch (
@@ -1367,9 +1393,6 @@ class MainActivity : Activity() {
         playButton.isEnabled =
             hasFile
 
-        stopPlaybackButton.isEnabled =
-            hasFile
-
         fitButton.isEnabled =
             hasFile
 
@@ -1386,7 +1409,6 @@ class MainActivity : Activity() {
             listOf(
                 fitButton,
                 playButton,
-                stopPlaybackButton,
                 deleteButton,
                 cropButton,
                 saveAsButton
@@ -1422,7 +1444,6 @@ class MainActivity : Activity() {
 
         if (busy) {
             playButton.isEnabled = false
-            stopPlaybackButton.isEnabled = false
             fitButton.isEnabled = false
             deleteButton.isEnabled = false
             cropButton.isEnabled = false
@@ -1517,6 +1538,9 @@ class MainActivity : Activity() {
 
         private const val REQUEST_OPEN_WAV =
             4101
+
+        private const val REQUEST_SAVE_WAV =
+            4102
 
         private const val UI_UPDATE_MS =
             100L

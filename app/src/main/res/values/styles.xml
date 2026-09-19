@@ -1,9 +1,14 @@
 <resources>
-    <style name="Theme.Volt1Recorder" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style
+        name="Theme.Volt1Recorder"
+        parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#B00020</item>
-        <item name="android:navigationBarColor">#111111</item>
-        <item name="android:statusBarColor">#111111</item>
+        <item name="android:windowBackground">#0B0D10</item>
+        <item name="android:colorAccent">#5CDCA5</item>
+        <item name="android:navigationBarColor">#0B0D10</item>
+        <item name="android:statusBarColor">#0B0D10</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>

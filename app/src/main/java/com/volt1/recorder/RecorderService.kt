@@ -229,6 +229,9 @@ class RecorderService : Service() {
                         )
 
                         peakDb = converted.peakDb
+                        RecordingWaveformBuffer.append(
+                            converted.peakLinear
+                        )
                         writer.write(wavBuffer, converted.bytes)
                         elapsedMs = SystemClock.elapsedRealtime() - startedAt
 
@@ -392,7 +395,8 @@ class RecorderService : Service() {
 
     private data class ConvertedBlock(
         val bytes: Int,
-        val peakDb: Float
+        val peakDb: Float,
+        val peakLinear: Float
     )
 
     private fun convertChannel0Pcm32ToPcm24(
@@ -429,16 +433,26 @@ class RecorderService : Service() {
             sourceOffset += sourceFrameSizeBytes
         }
 
-        val db = if (peak == 0L) {
+        val linear = if (peak == 0L) {
+            0f
+        } else {
+            (peak.toDouble() / PCM24_MAX)
+                .toFloat()
+                .coerceIn(0f, 1f)
+        }
+
+        val db = if (linear <= 0f) {
             -120f
         } else {
-            (20.0 * log10(peak.toDouble() / PCM24_MAX)).toFloat()
+            (20.0 * log10(linear.toDouble()))
+                .toFloat()
                 .coerceAtLeast(-120f)
         }
 
         return ConvertedBlock(
             bytes = outputBytes,
-            peakDb = db
+            peakDb = db,
+            peakLinear = linear
         )
     }
 
@@ -448,6 +462,7 @@ class RecorderService : Service() {
         peakDb = -120f
         elapsedMs = 0L
         currentFile = ""
+        RecordingWaveformBuffer.reset()
     }
 
     private fun createNotificationChannel() {

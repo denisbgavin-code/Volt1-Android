@@ -476,16 +476,14 @@ class MainActivity : Activity() {
         waveformView
             .onPlayheadChanged =
             { position ->
+                playbackPosition =
+                    position
+
                 if (
                     playbackActive
                 ) {
-                    player.stop()
-                    playbackActive =
-                        false
+                    playSelection()
                 }
-
-                playbackPosition =
-                    position
             }
 
         startButton

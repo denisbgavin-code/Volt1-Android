@@ -17,10 +17,6 @@
         android:theme="@style/Theme.Volt1Recorder">
 
         <activity
-            android:name=".EditorActivity"
-            android:exported="false" />
-
-        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

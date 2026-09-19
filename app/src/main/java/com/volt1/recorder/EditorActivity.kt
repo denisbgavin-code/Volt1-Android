@@ -188,12 +188,12 @@ class EditorActivity : Activity() {
 
                 val adapter = ArrayAdapter(
                     this,
-                    android.R.layout.simple_spinner_item,
+                    R.layout.spinner_recording_item,
+                    android.R.id.text1,
                     items.map { it.name }
                 ).apply {
                     setDropDownViewResource(
-                        android.R.layout
-                            .simple_spinner_dropdown_item
+                        R.layout.spinner_recording_dropdown
                     )
                 }
 
@@ -512,17 +512,17 @@ class EditorActivity : Activity() {
         selectionView.text =
             buildString {
                 appendLine(
-                    "Начало: " +
+                    "IN   " +
                         formatTime(startMs)
                 )
 
                 appendLine(
-                    "Конец: " +
+                    "OUT  " +
                         formatTime(endMs)
                 )
 
                 append(
-                    "Длительность: " +
+                    "LEN  " +
                         formatTime(durationMs)
                 )
             }

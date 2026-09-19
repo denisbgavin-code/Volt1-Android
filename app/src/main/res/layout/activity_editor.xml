@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#F6F6F6">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <Button
+            android:id="@+id/backToRecorder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="← К записи" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Редактор аудио"
+            android:textColor="#111111"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Обрезка PCM WAV без перекодирования"
+            android:textColor="#555555"
+            android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Запись"
+            android:textColor="#222222"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/recordingSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="6dp"
+            android:background="#FFFFFF" />
+
+        <Button
+            android:id="@+id/refreshRecordings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Обновить список файлов" />
+
+        <TextView
+            android:id="@+id/editorFileInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="#FFFFFF"
+            android:padding="14dp"
+            android:text="Файл не выбран"
+            android:textColor="#333333"
+            android:textIsSelectable="true"
+            android:textSize="14sp" />
+
+        <com.volt1.recorder.WaveformView
+            android:id="@+id/waveform"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="18dp"
+            android:background="#FFFFFF"
+            android:contentDescription="Waveform и границы выделения" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Начало"
+            android:textColor="#333333"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <SeekBar
+            android:id="@+id/startSeek"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:max="10000" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Конец"
+            android:textColor="#333333"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <SeekBar
+            android:id="@+id/endSeek"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:max="10000"
+            android:progress="10000" />
+
+        <TextView
+            android:id="@+id/selectionInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="monospace"
+            android:text="Начало: —&#10;Конец: —&#10;Длительность: —"
+            android:textColor="#222222"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/playSelection"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="22dp"
+            android:text="▶ Воспроизвести выделение"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/stopPlayback"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="8dp"
+            android:text="■ Остановить воспроизведение"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/saveSelection"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginTop="22dp"
+            android:text="СОХРАНИТЬ ВЫДЕЛЕНИЕ КАК НОВЫЙ WAV"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/editorStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:paddingBottom="24dp"
+            android:text="Загрузка…"
+            android:textColor="#555555"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+</ScrollView>

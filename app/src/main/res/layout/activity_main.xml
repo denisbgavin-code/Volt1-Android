@@ -104,6 +104,15 @@
             android:textIsSelectable="true"
             android:textSize="14sp" />
 
+        <Button
+            android:id="@+id/openEditor"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="18dp"
+            android:text="РЕДАКТОР АУДИО"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

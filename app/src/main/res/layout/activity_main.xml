@@ -35,7 +35,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
-                android:text="v0.4.2"
+                android:text="v0.4.3"
                 android:textColor="#7F8793"
                 android:textSize="10sp" />
         </LinearLayout>
@@ -195,7 +195,7 @@
                 android:layout_marginStart="2dp"
                 android:layout_marginEnd="2dp"
                 android:layout_weight="1"
-                android:background="@drawable/studio_button_secondary"
+                android:background="@drawable/studio_button_accent"
                 android:enabled="false"
                 android:minWidth="0dp"
                 android:paddingStart="4dp"
@@ -203,7 +203,7 @@
                 android:stateListAnimator="@null"
                 android:text="▶ PLAY"
                 android:textAllCaps="false"
-                android:textColor="#F4F7FA"
+                android:textColor="#0B0D10"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
@@ -213,7 +213,7 @@
                 android:layout_height="44dp"
                 android:layout_marginStart="4dp"
                 android:layout_weight="1"
-                android:background="@drawable/studio_button_secondary"
+                android:background="@drawable/studio_button_stop"
                 android:enabled="false"
                 android:minWidth="0dp"
                 android:paddingStart="4dp"
@@ -221,7 +221,7 @@
                 android:stateListAnimator="@null"
                 android:text="■ STOP"
                 android:textAllCaps="false"
-                android:textColor="#F4F7FA"
+                android:textColor="#0B0D10"
                 android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -274,14 +274,14 @@
                     android:layout_height="38dp"
                     android:layout_marginEnd="3dp"
                     android:layout_weight="1"
-                    android:background="@drawable/studio_button_accent"
+                    android:background="@drawable/studio_button_secondary"
                     android:minWidth="0dp"
                     android:paddingStart="3dp"
                     android:paddingEnd="3dp"
                     android:stateListAnimator="@null"
                     android:text="OPEN"
                     android:textAllCaps="false"
-                    android:textColor="#0B0D10"
+                    android:textColor="#F4F7FA"
                     android:textSize="11sp"
                     android:textStyle="bold" />
 

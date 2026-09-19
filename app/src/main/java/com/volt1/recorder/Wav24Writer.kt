@@ -31,7 +31,7 @@ class Wav24Writer(
                 "_24bit_48k.wav"
             )
 
-    private val uri: Uri
+    val uri: Uri
     private val descriptor: android.os.ParcelFileDescriptor
     private val output: FileOutputStream
     private val channel: FileChannel
@@ -89,13 +89,7 @@ class Wav24Writer(
     fun closeAndPublish() {
         if (closed) return
 
-        channel.position(0L)
-        writeFully(createHeader(dataBytes))
-        channel.force(true)
-
-        channel.close()
-        output.close()
-        descriptor.close()
+        finalizeAndClose()
 
         resolver.update(
             uri,
@@ -105,6 +99,21 @@ class Wav24Writer(
             null,
             null
         )
+    }
+
+    fun closeKeepingPending() {
+        if (closed) return
+        finalizeAndClose()
+    }
+
+    private fun finalizeAndClose() {
+        channel.position(0L)
+        writeFully(createHeader(dataBytes))
+        channel.force(true)
+
+        channel.close()
+        output.close()
+        descriptor.close()
 
         closed = true
     }

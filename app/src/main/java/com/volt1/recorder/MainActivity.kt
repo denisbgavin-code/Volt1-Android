@@ -1053,17 +1053,17 @@ class MainActivity : Activity() {
                     currentInfo =
                         info
 
-                    selectionStart =
+                    val targetSelectionStart =
                         restoreState
                             ?.selectionStart
                             ?: 0f
 
-                    selectionEnd =
+                    val targetSelectionEnd =
                         restoreState
                             ?.selectionEnd
                             ?: 1f
 
-                    playbackPosition =
+                    val targetPlaybackPosition =
                         restoreState
                             ?.playbackPosition
                             ?: 0f
@@ -1076,6 +1076,15 @@ class MainActivity : Activity() {
                             resetViewport =
                                 true
                         )
+
+                    selectionStart =
+                        targetSelectionStart
+
+                    selectionEnd =
+                        targetSelectionEnd
+
+                    playbackPosition =
+                        targetPlaybackPosition
 
                     waveformView
                         .setSelection(
@@ -1243,6 +1252,8 @@ class MainActivity : Activity() {
         }
 
         player.stop()
+        playbackActive = false
+
         setEditingBusy(
             true,
             "Deleting range…"
@@ -1344,6 +1355,7 @@ class MainActivity : Activity() {
         }
 
         player.stop()
+        playbackActive = false
 
         setEditingBusy(
             true,
@@ -1468,6 +1480,7 @@ class MainActivity : Activity() {
             currentInfo ?: return
 
         player.stop()
+        playbackActive = false
 
         setEditingBusy(
             true,

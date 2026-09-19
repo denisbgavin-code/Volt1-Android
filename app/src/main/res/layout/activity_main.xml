@@ -35,7 +35,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
-                android:text="v0.4.5"
+                android:text="v0.4.6"
                 android:textColor="#7F8793"
                 android:textSize="10sp" />
         </LinearLayout>
@@ -207,48 +207,6 @@
                 android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/openFile"
-                    android:layout_width="0dp"
-                    android:layout_height="38dp"
-                    android:layout_marginEnd="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="OPEN"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/fitWaveform"
-                    android:layout_width="0dp"
-                    android:layout_height="38dp"
-                    android:layout_marginStart="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:enabled="false"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="FIT"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:orientation="horizontal">
-
-                <Button
                     android:id="@+id/deleteSelection"
                     android:layout_width="0dp"
                     android:layout_height="40dp"
@@ -282,6 +240,48 @@
                     android:textAllCaps="false"
                     android:textColor="#F4F7FA"
                     android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/openFile"
+                    android:layout_width="0dp"
+                    android:layout_height="38dp"
+                    android:layout_marginEnd="3dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/studio_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingStart="3dp"
+                    android:paddingEnd="3dp"
+                    android:stateListAnimator="@null"
+                    android:text="OPEN"
+                    android:textAllCaps="false"
+                    android:textColor="#F4F7FA"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/fitWaveform"
+                    android:layout_width="0dp"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/studio_button_secondary"
+                    android:enabled="false"
+                    android:minWidth="0dp"
+                    android:paddingStart="3dp"
+                    android:paddingEnd="3dp"
+                    android:stateListAnimator="@null"
+                    android:text="FIT"
+                    android:textAllCaps="false"
+                    android:textColor="#F4F7FA"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
             </LinearLayout>
 

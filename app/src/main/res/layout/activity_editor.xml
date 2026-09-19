@@ -31,6 +31,14 @@
                 android:textColor="#5CDCA5"
                 android:textSize="12sp" />
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Use the Android system file picker to open a WAV from internal storage, Downloads, SD card, USB drive or an installed cloud provider."
+                android:textColor="#69717D"
+                android:textSize="10sp" />
+
             <Button
                 android:id="@+id/backToRecorder"
                 android:layout_width="wrap_content"
@@ -77,7 +85,7 @@
                 android:layout_height="wrap_content"
                 android:fontFamily="sans-serif-medium"
                 android:letterSpacing="0.08"
-                android:text="SOURCE TAKE"
+                android:text="RECENT APP TAKES"
                 android:textColor="#8C95A3"
                 android:textSize="11sp" />
 
@@ -97,7 +105,7 @@
                 android:layout_marginTop="10dp"
                 android:background="@drawable/studio_button_secondary"
                 android:stateListAnimator="@null"
-                android:text="REFRESH FILES"
+                android:text="OPEN WAV FILE • DEVICE / USB / CLOUD"
                 android:textAllCaps="false"
                 android:textColor="#D8DDE5"
                 android:textSize="12sp" />

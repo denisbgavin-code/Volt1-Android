@@ -582,6 +582,46 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    @Deprecated(
+        "Android back callback compatibility"
+    )
+    override fun onBackPressed() {
+        if (
+            RecorderService.recording
+        ) {
+            startService(
+                Intent(
+                    this,
+                    RecorderService::class.java
+                ).apply {
+                    action =
+                        RecorderService.ACTION_STOP
+                }
+            )
+
+            return
+        }
+
+        if (
+            playbackActive
+        ) {
+            player.stop()
+
+            playbackActive =
+                false
+
+            return
+        }
+
+        if (
+            undoLastEdit()
+        ) {
+            return
+        }
+
+        super.onBackPressed()
+    }
+
     override fun onDestroy() {
         player.stop()
         clearEditingSession()
@@ -811,7 +851,10 @@ class MainActivity : Activity() {
                         )
                 }
 
-                clearWorkingCopy()
+                player.stop()
+                playbackActive = false
+                playbackPosition = 0f
+                clearEditingSession()
 
                 val displayName =
                     resolveDisplayName(
@@ -894,7 +937,10 @@ class MainActivity : Activity() {
             }
 
             runOnUiThread {
-                clearWorkingCopy()
+                player.stop()
+                playbackActive = false
+                playbackPosition = 0f
+                clearEditingSession()
                 sessionDisplayName =
                     displayName
                 editDirty =
@@ -965,12 +1011,11 @@ class MainActivity : Activity() {
 
     private fun loadRecording(
         uri: Uri,
-        displayName: String
+        displayName: String,
+        restoreState: EditState? = null
     ) {
         player.stop()
-        waveformView.setPlaybackPosition(
-            null
-        )
+        playbackActive = false
 
         val generation =
             ++loadGeneration
@@ -1009,10 +1054,19 @@ class MainActivity : Activity() {
                         info
 
                     selectionStart =
-                        0f
+                        restoreState
+                            ?.selectionStart
+                            ?: 0f
 
                     selectionEnd =
-                        1f
+                        restoreState
+                            ?.selectionEnd
+                            ?: 1f
+
+                    playbackPosition =
+                        restoreState
+                            ?.playbackPosition
+                            ?: 0f
 
                     waveformView
                         .showEditable(
@@ -1021,6 +1075,17 @@ class MainActivity : Activity() {
                                 info.durationMs,
                             resetViewport =
                                 true
+                        )
+
+                    waveformView
+                        .setSelection(
+                            selectionStart,
+                            selectionEnd
+                        )
+
+                    waveformView
+                        .setPlaybackPosition(
+                            playbackPosition
                         )
 
                     fileView.text =
@@ -1062,21 +1127,71 @@ class MainActivity : Activity() {
         val info =
             currentInfo ?: return
 
-        val frames =
+        player.stop()
+
+        val selected =
             selectedFrames(
                 info
+            )
+
+        val cursorFrame =
+            floor(
+                info.totalFrames *
+                    playbackPosition
+            )
+                .toLong()
+                .coerceIn(
+                    0L,
+                    info.totalFrames - 1L
+                )
+
+        val selectionIsPartial =
+            selectionEnd -
+                selectionStart <
+                MAX_FULL_SELECTION
+
+        val cursorInsideSelection =
+            cursorFrame >=
+                selected.first &&
+                cursorFrame <
+                selected.second
+
+        val endFrame =
+            if (
+                selectionIsPartial &&
+                cursorInsideSelection
+            ) {
+                selected.second
+            } else {
+                info.totalFrames
+            }
+
+        val safeEnd =
+            endFrame.coerceAtLeast(
+                cursorFrame + 1L
+            )
+
+        playbackActive =
+            true
+
+        waveformView
+            .setPlaybackPosition(
+                playbackPosition
             )
 
         player.play(
             context = this,
             info = info,
             startFrame =
-                frames.first,
+                cursorFrame,
             endFrameExclusive =
-                frames.second,
+                safeEnd,
             onProgress = {
                 position ->
                 runOnUiThread {
+                    playbackPosition =
+                        position
+
                     waveformView
                         .setPlaybackPosition(
                             position
@@ -1086,10 +1201,8 @@ class MainActivity : Activity() {
             onFinished = {
                 error ->
                 runOnUiThread {
-                    waveformView
-                        .setPlaybackPosition(
-                            null
-                        )
+                    playbackActive =
+                        false
 
                     if (
                         error != null
@@ -1147,29 +1260,37 @@ class MainActivity : Activity() {
                             frames.second
                     )
 
-                val oldWorking =
-                    workingUri
-
-                WavFile.discardPending(
-                    this,
-                    oldWorking
-                )
-
-                workingUri =
-                    newUri
-
-                editDirty =
-                    true
-
-                val displayName =
-                    sessionDisplayName
-                        ?: info.displayName
+                val previousState =
+                    captureEditState(
+                        info
+                    )
 
                 runOnUiThread {
+                    if (
+                        previousState != null
+                    ) {
+                        editHistory.addLast(
+                            previousState
+                        )
+                    }
+
+                    ownedWorkingUris.add(
+                        newUri
+                    )
+
+                    workingUri =
+                        newUri
+
+                    editDirty =
+                        true
                     setEditingBusy(
                         false,
                         "Range deleted • unsaved"
                     )
+
+                    val displayName =
+                        sessionDisplayName
+                            ?: info.displayName
 
                     loadRecording(
                         newUri,
@@ -1241,29 +1362,37 @@ class MainActivity : Activity() {
                             frames.second
                     )
 
-                val oldWorking =
-                    workingUri
-
-                WavFile.discardPending(
-                    this,
-                    oldWorking
-                )
-
-                workingUri =
-                    newName
-
-                editDirty =
-                    true
-
-                val displayName =
-                    sessionDisplayName
-                        ?: info.displayName
+                val previousState =
+                    captureEditState(
+                        info
+                    )
 
                 runOnUiThread {
+                    if (
+                        previousState != null
+                    ) {
+                        editHistory.addLast(
+                            previousState
+                        )
+                    }
+
+                    ownedWorkingUris.add(
+                        newName
+                    )
+
+                    workingUri =
+                        newName
+
+                    editDirty =
+                        true
                     setEditingBusy(
                         false,
                         "Crop applied • unsaved"
                     )
+
+                    val displayName =
+                        sessionDisplayName
+                            ?: info.displayName
 
                     loadRecording(
                         newName,
@@ -1394,19 +1523,115 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun clearWorkingCopy() {
-        val uri =
-            workingUri
+    private fun clearEditingSession() {
+        editHistory.clear()
 
-        workingUri =
-            null
+        val uris =
+            ownedWorkingUris
+                .toList()
 
-        if (uri != null) {
+        ownedWorkingUris.clear()
+
+        uris.forEach {
+            uri ->
             WavFile.discardPending(
                 this,
                 uri
             )
         }
+
+        workingUri =
+            null
+    }
+
+    private fun captureEditState(
+        info: WavInfo
+    ): EditState =
+        EditState(
+            uri = info.uri,
+            displayName =
+                sessionDisplayName
+                    ?: info.displayName,
+            isWorking =
+                workingUri ==
+                    info.uri,
+            dirty =
+                editDirty,
+            selectionStart =
+                selectionStart,
+            selectionEnd =
+                selectionEnd,
+            playbackPosition =
+                playbackPosition
+        )
+
+    private fun undoLastEdit():
+        Boolean {
+
+        if (
+            editHistory.isEmpty()
+        ) {
+            return false
+        }
+
+        player.stop()
+        playbackActive =
+            false
+
+        val currentWorking =
+            workingUri
+
+        if (
+            currentWorking != null &&
+            ownedWorkingUris.remove(
+                currentWorking
+            )
+        ) {
+            WavFile.discardPending(
+                this,
+                currentWorking
+            )
+        }
+
+        val state =
+            editHistory.removeLast()
+
+        workingUri =
+            if (
+                state.isWorking
+            ) {
+                state.uri
+            } else {
+                null
+            }
+
+        editDirty =
+            state.dirty
+
+        sessionDisplayName =
+            state.displayName
+
+        selectionStart =
+            state.selectionStart
+
+        selectionEnd =
+            state.selectionEnd
+
+        playbackPosition =
+            state.playbackPosition
+
+        statusView.text =
+            "UNDO • previous edit restored"
+
+        loadRecording(
+            uri = state.uri,
+            displayName =
+                state.displayName,
+            restoreState =
+                state
+        )
+
+        return true
     }
 
     private fun selectedFrames(
@@ -1600,6 +1825,16 @@ class MainActivity : Activity() {
             )
         }
     }
+
+    private data class EditState(
+        val uri: Uri,
+        val displayName: String,
+        val isWorking: Boolean,
+        val dirty: Boolean,
+        val selectionStart: Float,
+        val selectionEnd: Float,
+        val playbackPosition: Float
+    )
 
     companion object {
         private const val REQUEST_PERMISSIONS =

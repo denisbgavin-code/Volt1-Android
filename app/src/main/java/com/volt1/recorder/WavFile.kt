@@ -844,6 +844,44 @@ object WavFile {
         }
     }
 
+    fun exportToUri(
+        context: Context,
+        info: WavInfo,
+        destinationUri: Uri
+    ) {
+        validateEditable(info)
+
+        val resolver =
+            context.contentResolver
+
+        val input =
+            resolver.openInputStream(
+                info.uri
+            )
+            ?: error(
+                "Не удалось открыть текущую редакцию"
+            )
+
+        val output =
+            resolver.openOutputStream(
+                destinationUri,
+                "w"
+            )
+            ?: error(
+                "Не удалось открыть выбранное место сохранения"
+            )
+
+        input.use { source ->
+            output.use { target ->
+                source.copyTo(
+                    target,
+                    256 * 1024
+                )
+                target.flush()
+            }
+        }
+    }
+
     fun discardPending(
         context: Context,
         uri: Uri?

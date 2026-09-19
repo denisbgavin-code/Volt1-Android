@@ -13,8 +13,8 @@ android {
         applicationId = "com.volt1.recorder"
         minSdk = 31
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.4.3"
+        versionCode = 9
+        versionName = "0.4.4"
     }
 
     buildTypes {

@@ -85,28 +85,32 @@ class RecorderService : Service() {
 
             requireVolt1(device)
 
+            // Volt 1 is exposed by this Android device as a 2-channel,
+            // high-resolution USB endpoint (PCM32/float). Capture the endpoint
+            // in its native channel topology, then extract channel index 0 and
+            // reduce Q.31 PCM32 to Q.23 PCM24 without resampling.
             val requestedFormat = AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_24BIT_PACKED)
+                .setEncoding(AudioFormat.ENCODING_PCM_32BIT)
                 .setSampleRate(SAMPLE_RATE)
-                .setChannelIndexMask(CHANNEL_INDEX_MASK)
+                .setChannelIndexMask(SOURCE_CHANNEL_INDEX_MASK)
                 .build()
 
             val minBuffer = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_24BIT_PACKED
+                AudioFormat.CHANNEL_IN_STEREO,
+                AudioFormat.ENCODING_PCM_32BIT
             )
 
             if (minBuffer == AudioRecord.ERROR_BAD_VALUE) {
-                error("Android отверг PCM24/48 kHz")
+                error("Android отверг PCM32/48 kHz stereo для Volt 1")
             }
 
-            val desiredBuffer = SAMPLE_RATE * FRAME_SIZE_BYTES / 2
+            val desiredBuffer = SAMPLE_RATE * SOURCE_FRAME_SIZE_BYTES / 2
             val rawBufferSize = max(
                 if (minBuffer > 0) minBuffer * 4 else 0,
                 desiredBuffer
             )
-            val recordBufferSize = alignToFrame(rawBufferSize)
+            val recordBufferSize = alignToSourceFrame(rawBufferSize)
 
             val supportsUnprocessed = audioManager
                 .getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)
@@ -118,7 +122,7 @@ class RecorderService : Service() {
                 MediaRecorder.AudioSource.VOICE_RECOGNITION
             }
 
-            status = "Инициализация PCM24 / 48 kHz…"
+            status = "Инициализация USB PCM32 / 48 kHz / 2 ch…"
 
             val audioRecord = AudioRecord.Builder()
                 .setContext(this)
@@ -150,16 +154,20 @@ class RecorderService : Service() {
             writer = Wav24Writer(
                 context = this,
                 sampleRate = SAMPLE_RATE,
-                channels = CHANNELS
+                channels = OUTPUT_CHANNELS
             )
 
             currentFile = writer.displayName
             recording = true
-            status = "REC • PCM24 • 48 kHz • Volt 1"
+            status = "REC • WAV PCM24/48 • Volt 1 CH1"
             updateNotification(status)
 
             val applicationBuffer = ByteBuffer.allocateDirect(
-                SAMPLE_RATE * FRAME_SIZE_BYTES / 10
+                SAMPLE_RATE * SOURCE_FRAME_SIZE_BYTES / 10
+            ).order(java.nio.ByteOrder.nativeOrder())
+
+            val wavBuffer = ByteBuffer.allocateDirect(
+                SAMPLE_RATE * OUTPUT_FRAME_SIZE_BYTES / 10
             )
 
             val startedAt = SystemClock.elapsedRealtime()
@@ -176,12 +184,17 @@ class RecorderService : Service() {
 
                 when {
                     count > 0 -> {
-                        if (count % FRAME_SIZE_BYTES != 0) {
-                            error("Получен нецелый PCM24 frame: $count bytes")
+                        if (count % SOURCE_FRAME_SIZE_BYTES != 0) {
+                            error("Получен нецелый PCM32 stereo frame: $count bytes")
                         }
 
-                        peakDb = calculatePeakDb(applicationBuffer, count)
-                        writer.write(applicationBuffer, count)
+                        val converted = convertChannel0Pcm32ToPcm24(
+                            source = applicationBuffer,
+                            sourceBytes = count,
+                            destination = wavBuffer
+                        )
+                        peakDb = converted.peakDb
+                        writer.write(wavBuffer, converted.bytes)
                         elapsedMs = SystemClock.elapsedRealtime() - startedAt
 
                         blocksSinceValidation++
@@ -279,12 +292,15 @@ class RecorderService : Service() {
             error("Client sample rate ${client.sampleRate} Hz вместо 48000 Hz")
         }
 
-        if (client.encoding != AudioFormat.ENCODING_PCM_24BIT_PACKED) {
-            error("Клиентский поток не PCM 24-bit packed")
+        if (client.encoding != AudioFormat.ENCODING_PCM_32BIT) {
+            error("Клиентский поток не PCM32")
         }
 
-        if (client.channelCount != CHANNELS) {
-            error("Клиентский поток содержит ${client.channelCount} канал(а)")
+        if (client.channelCount != SOURCE_CHANNELS) {
+            error(
+                "Клиентский USB-поток содержит ${client.channelCount} канал(а), " +
+                    "ожидалось 2"
+            )
         }
 
         val hardware = configuration.format
@@ -333,34 +349,61 @@ class RecorderService : Service() {
         else -> false
     }
 
-    private fun alignToFrame(bytes: Int): Int {
-        val remainder = bytes % FRAME_SIZE_BYTES
-        return if (remainder == 0) bytes else bytes + FRAME_SIZE_BYTES - remainder
+    private fun alignToSourceFrame(bytes: Int): Int {
+        val remainder = bytes % SOURCE_FRAME_SIZE_BYTES
+        return if (remainder == 0) {
+            bytes
+        } else {
+            bytes + SOURCE_FRAME_SIZE_BYTES - remainder
+        }
     }
 
-    private fun calculatePeakDb(buffer: ByteBuffer, count: Int): Float {
-        var peak = 0L
-        var index = 0
+    private data class ConvertedBlock(
+        val bytes: Int,
+        val peakDb: Float
+    )
 
-        while (index + 2 < count) {
-            val b0 = buffer.get(index).toInt() and 0xff
-            val b1 = buffer.get(index + 1).toInt() and 0xff
-            val b2 = buffer.get(index + 2).toInt() and 0xff
+    private fun convertChannel0Pcm32ToPcm24(
+        source: ByteBuffer,
+        sourceBytes: Int,
+        destination: ByteBuffer
+    ): ConvertedBlock {
+        val frameCount = sourceBytes / SOURCE_FRAME_SIZE_BYTES
+        val outputBytes = frameCount * OUTPUT_FRAME_SIZE_BYTES
 
-            var sample = b0 or (b1 shl 8) or (b2 shl 16)
-
-            if ((sample and 0x800000) != 0) {
-                sample = sample or -0x1000000
-            }
-
-            peak = max(peak, abs(sample.toLong()))
-            index += FRAME_SIZE_BYTES
+        if (destination.capacity() < outputBytes) {
+            error("Недостаточный PCM24 output buffer")
         }
 
-        if (peak == 0L) return -120f
+        destination.clear()
+        var peak = 0L
+        var sourceOffset = 0
 
-        return (20.0 * log10(peak.toDouble() / PCM24_MAX)).toFloat()
-            .coerceAtLeast(-120f)
+        repeat(frameCount) {
+            // Android PCM32 is signed Q.31. Arithmetic >> 8 converts the
+            // first USB channel to signed Q.23, the numeric range of PCM24.
+            val q31 = source.getInt(sourceOffset)
+            val q23 = q31 shr 8
+
+            destination.put((q23 and 0xff).toByte())
+            destination.put(((q23 ushr 8) and 0xff).toByte())
+            destination.put(((q23 ushr 16) and 0xff).toByte())
+
+            peak = max(peak, abs(q23.toLong()))
+            sourceOffset += SOURCE_FRAME_SIZE_BYTES
+        }
+
+        val db = if (peak == 0L) {
+            -120f
+        } else {
+            (20.0 * log10(peak.toDouble() / PCM24_MAX)).toFloat()
+                .coerceAtLeast(-120f)
+        }
+
+        return ConvertedBlock(
+            bytes = outputBytes,
+            peakDb = db
+        )
     }
 
     private fun resetPublicState() {
@@ -426,9 +469,15 @@ class RecorderService : Service() {
         const val EXTRA_DEVICE_ID = "device_id"
 
         private const val SAMPLE_RATE = 48_000
-        private const val CHANNELS = 1
-        private const val CHANNEL_INDEX_MASK = 0x1
-        private const val FRAME_SIZE_BYTES = 3
+
+        private const val SOURCE_CHANNELS = 2
+        private const val SOURCE_BYTES_PER_SAMPLE = 4
+        private const val SOURCE_FRAME_SIZE_BYTES =
+            SOURCE_CHANNELS * SOURCE_BYTES_PER_SAMPLE
+        private const val SOURCE_CHANNEL_INDEX_MASK = 0x3
+
+        private const val OUTPUT_CHANNELS = 1
+        private const val OUTPUT_FRAME_SIZE_BYTES = 3
         private const val PCM24_MAX = 8_388_607.0
 
         private const val NOTIFICATION_CHANNEL = "volt1_recording"

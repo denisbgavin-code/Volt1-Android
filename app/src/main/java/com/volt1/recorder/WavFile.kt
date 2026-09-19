@@ -554,6 +554,311 @@ object WavFile {
         }
     }
 
+    fun saveAsCopy(
+        context: Context,
+        info: WavInfo,
+        baseDisplayName: String
+    ): String {
+        validateEditable(info)
+
+        val baseName =
+            baseDisplayName
+                .removeSuffix(".wav")
+                .removeSuffix(".WAV")
+                .ifBlank { "Volt1_Edit" }
+
+        val writer =
+            Wav24Writer(
+                context = context,
+                sampleRate = info.sampleRate,
+                channels = info.channels,
+                displayNameOverride =
+                    "${baseName}_edit_${System.currentTimeMillis()}.wav"
+            )
+
+        var completed = false
+
+        try {
+            val pfd =
+                context.contentResolver
+                    .openFileDescriptor(
+                        info.uri,
+                        "r"
+                    )
+                    ?: error(
+                        "Не удалось открыть текущую редакцию"
+                    )
+
+            pfd.use { descriptor ->
+                FileInputStream(
+                    descriptor.fileDescriptor
+                ).use { input ->
+                    copyFrames(
+                        channel = input.channel,
+                        writer = writer,
+                        info = info,
+                        startFrame = 0L,
+                        endFrameExclusive =
+                            info.totalFrames
+                    )
+                }
+            }
+
+            writer.closeAndPublish()
+            completed = true
+            return writer.displayName
+
+        } finally {
+            if (!completed) {
+                runCatching {
+                    writer.abort()
+                }
+            }
+        }
+    }
+
+    fun cropSelectionWorking(
+        context: Context,
+        info: WavInfo,
+        startFrame: Long,
+        endFrameExclusive: Long
+    ): Uri {
+        validateEditable(info)
+
+        val start =
+            startFrame.coerceIn(
+                0L,
+                info.totalFrames - 1L
+            )
+
+        val end =
+            endFrameExclusive.coerceIn(
+                start + 1L,
+                info.totalFrames
+            )
+
+        val writer =
+            Wav24Writer(
+                context = context,
+                sampleRate = info.sampleRate,
+                channels = info.channels,
+                displayNameOverride =
+                    "Volt1_Working_Crop_${System.currentTimeMillis()}.wav"
+            )
+
+        var completed = false
+
+        try {
+            val pfd =
+                context.contentResolver
+                    .openFileDescriptor(
+                        info.uri,
+                        "r"
+                    )
+                    ?: error(
+                        "Не удалось открыть текущую редакцию"
+                    )
+
+            pfd.use { descriptor ->
+                FileInputStream(
+                    descriptor.fileDescriptor
+                ).use { input ->
+                    copyFrames(
+                        channel = input.channel,
+                        writer = writer,
+                        info = info,
+                        startFrame = start,
+                        endFrameExclusive = end
+                    )
+                }
+            }
+
+            writer.closeKeepingPending()
+            completed = true
+            return writer.uri
+
+        } finally {
+            if (!completed) {
+                runCatching {
+                    writer.abort()
+                }
+            }
+        }
+    }
+
+    fun deleteSelectionWorking(
+        context: Context,
+        info: WavInfo,
+        startFrame: Long,
+        endFrameExclusive: Long
+    ): Uri {
+        validateEditable(info)
+
+        val start =
+            startFrame.coerceIn(
+                0L,
+                info.totalFrames - 1L
+            )
+
+        val end =
+            endFrameExclusive.coerceIn(
+                start + 1L,
+                info.totalFrames
+            )
+
+        if (
+            start == 0L &&
+            end == info.totalFrames
+        ) {
+            error(
+                "Нельзя удалить весь трек"
+            )
+        }
+
+        val writer =
+            Wav24Writer(
+                context = context,
+                sampleRate = info.sampleRate,
+                channels = info.channels,
+                displayNameOverride =
+                    "Volt1_Working_Cut_${System.currentTimeMillis()}.wav"
+            )
+
+        var completed = false
+
+        try {
+            val pfd =
+                context.contentResolver
+                    .openFileDescriptor(
+                        info.uri,
+                        "r"
+                    )
+                    ?: error(
+                        "Не удалось открыть текущую редакцию"
+                    )
+
+            pfd.use { descriptor ->
+                FileInputStream(
+                    descriptor.fileDescriptor
+                ).use { input ->
+                    val channel =
+                        input.channel
+
+                    val availableBefore =
+                        start
+
+                    val availableAfter =
+                        info.totalFrames -
+                            end
+
+                    val fadeFrames =
+                        min(
+                            (
+                                info.sampleRate *
+                                    DECLICK_FADE_MS /
+                                    1000L
+                                ),
+                            min(
+                                availableBefore,
+                                availableAfter
+                            )
+                        ).toInt()
+
+                    if (fadeFrames > 1) {
+                        val fadeStart =
+                            start -
+                                fadeFrames
+
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = 0L,
+                            endFrameExclusive =
+                                fadeStart
+                        )
+
+                        writeFadedFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame =
+                                fadeStart,
+                            frameCount =
+                                fadeFrames,
+                            fadeIn = false
+                        )
+
+                        writeFadedFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = end,
+                            frameCount =
+                                fadeFrames,
+                            fadeIn = true
+                        )
+
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame =
+                                end +
+                                    fadeFrames,
+                            endFrameExclusive =
+                                info.totalFrames
+                        )
+                    } else {
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = 0L,
+                            endFrameExclusive =
+                                start
+                        )
+
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = end,
+                            endFrameExclusive =
+                                info.totalFrames
+                        )
+                    }
+                }
+            }
+
+            writer.closeKeepingPending()
+            completed = true
+            return writer.uri
+
+        } finally {
+            if (!completed) {
+                runCatching {
+                    writer.abort()
+                }
+            }
+        }
+    }
+
+    fun discardPending(
+        context: Context,
+        uri: Uri?
+    ) {
+        if (uri == null) return
+
+        runCatching {
+            context.contentResolver.delete(
+                uri,
+                null,
+                null
+            )
+        }
+    }
+
     private fun copyFrames(
         channel: java.nio.channels.FileChannel,
         writer: Wav24Writer,

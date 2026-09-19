@@ -74,7 +74,10 @@ class MainActivity : Activity() {
     private lateinit var deleteButton:
         Button
 
-    private lateinit var keepButton:
+    private lateinit var cropButton:
+        Button
+
+    private lateinit var saveAsButton:
         Button
 
     private val player =
@@ -85,6 +88,15 @@ class MainActivity : Activity() {
 
     private var currentInfo:
         WavInfo? = null
+
+    private var workingUri:
+        Uri? = null
+
+    private var sessionDisplayName:
+        String? = null
+
+    private var editDirty =
+        false
 
     private var selectionStart =
         0f
@@ -134,7 +146,10 @@ class MainActivity : Activity() {
                     !previousRecordingState
                 ) {
                     player.stop()
+                    clearWorkingCopy()
                     currentInfo = null
+                    sessionDisplayName = null
+                    editDirty = false
                     selectionStart = 0f
                     selectionEnd = 1f
 
@@ -254,18 +269,33 @@ class MainActivity : Activity() {
                     } else if (
                         info != null
                     ) {
-                        "EDIT • PCM24 / 48 kHz / mono"
+                        if (editDirty) {
+                            "EDIT • UNSAVED CHANGES • PCM24 / 48 kHz / mono"
+                        } else {
+                            "EDIT • PCM24 / 48 kHz / mono"
+                        }
                     } else {
                         serviceStatus
                     }
 
                 fileView.text =
-                    info?.displayName
-                        ?: RecorderService
+                    if (info != null) {
+                        val base =
+                            sessionDisplayName
+                                ?: info.displayName
+
+                        if (editDirty) {
+                            "$base • UNSAVED"
+                        } else {
+                            base
+                        }
+                    } else {
+                        RecorderService
                             .currentFile
                             .ifBlank {
                                 "No file loaded"
                             }
+                    }
 
                 startButton.isEnabled =
                     voltPresent &&
@@ -394,9 +424,14 @@ class MainActivity : Activity() {
                 R.id.deleteSelection
             )
 
-        keepButton =
+        cropButton =
             findViewById(
-                R.id.keepSelection
+                R.id.cropSelection
+            )
+
+        saveAsButton =
+            findViewById(
+                R.id.saveAs
             )
 
         waveformView
@@ -462,9 +497,14 @@ class MainActivity : Activity() {
                 deleteSelection()
             }
 
-        keepButton
+        cropButton
             .setOnClickListener {
-                keepSelection()
+                cropSelection()
+            }
+
+        saveAsButton
+            .setOnClickListener {
+                saveAs()
             }
 
         audioManager
@@ -501,6 +541,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         player.stop()
+        clearWorkingCopy()
 
         audioManager
             .unregisterAudioDeviceCallback(
@@ -635,6 +676,10 @@ class MainActivity : Activity() {
         }
 
         player.stop()
+        clearWorkingCopy()
+        currentInfo = null
+        sessionDisplayName = null
+        editDirty = false
 
         statusView.text =
             "Validating Volt 1 USB capture path…"
@@ -719,12 +764,23 @@ class MainActivity : Activity() {
                 )
         }
 
+        clearWorkingCopy()
+
+        val displayName =
+            resolveDisplayName(
+                uri
+            )
+
+        sessionDisplayName =
+            displayName
+
+        editDirty =
+            false
+
         loadRecording(
             uri = uri,
             displayName =
-                resolveDisplayName(
-                    uri
-                )
+                displayName
         )
     }
 
@@ -783,6 +839,12 @@ class MainActivity : Activity() {
             }
 
             runOnUiThread {
+                clearWorkingCopy()
+                sessionDisplayName =
+                    displayName
+                editDirty =
+                    false
+
                 loadRecording(
                     uri,
                     displayName
@@ -904,7 +966,8 @@ class MainActivity : Activity() {
                         )
 
                     fileView.text =
-                        info.displayName
+                        sessionDisplayName
+                            ?: info.displayName
 
                     statusView.text =
                         "EDIT • PCM24 / 48 kHz / mono"
@@ -1002,8 +1065,8 @@ class MainActivity : Activity() {
 
         Thread {
             try {
-                val newName =
-                    WavFile.deleteSelection(
+                val newUri =
+                    WavFile.deleteSelectionWorking(
                         context = this,
                         info = info,
                         startFrame =
@@ -1012,23 +1075,33 @@ class MainActivity : Activity() {
                             frames.second
                     )
 
-                val newUri =
-                    findMediaStoreUri(
-                        newName
-                    )
-                    ?: error(
-                        "Новый WAV не найден в MediaStore"
-                    )
+                val oldWorking =
+                    workingUri
+
+                WavFile.discardPending(
+                    this,
+                    oldWorking
+                )
+
+                workingUri =
+                    newUri
+
+                editDirty =
+                    true
+
+                val displayName =
+                    sessionDisplayName
+                        ?: info.displayName
 
                 runOnUiThread {
                     setEditingBusy(
                         false,
-                        "Range deleted"
+                        "Range deleted • unsaved"
                     )
 
                     loadRecording(
                         newUri,
-                        newName
+                        displayName
                     )
                 }
 
@@ -1051,7 +1124,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun keepSelection() {
+    private fun cropSelection() {
         val info =
             currentInfo ?: return
 
@@ -1081,13 +1154,13 @@ class MainActivity : Activity() {
 
         setEditingBusy(
             true,
-            "Saving selected range…"
+            "Cropping working edit…"
         )
 
         Thread {
             try {
                 val newName =
-                    WavFile.saveSelection(
+                    WavFile.cropSelectionWorking(
                         context = this,
                         info = info,
                         startFrame =
@@ -1096,18 +1169,109 @@ class MainActivity : Activity() {
                             frames.second
                     )
 
+                val oldWorking =
+                    workingUri
+
+                WavFile.discardPending(
+                    this,
+                    oldWorking
+                )
+
+                workingUri =
+                    newName
+
+                editDirty =
+                    true
+
+                val displayName =
+                    sessionDisplayName
+                        ?: info.displayName
+
+                runOnUiThread {
+                    setEditingBusy(
+                        false,
+                        "Crop applied • unsaved"
+                    )
+
+                    loadRecording(
+                        newName,
+                        displayName
+                    )
+                }
+
+            } catch (
+                t: Throwable
+            ) {
+                runOnUiThread {
+                    setEditingBusy(
+                        false,
+                        t.message
+                            ?: "Ошибка сохранения"
+                    )
+                }
+            }
+        }.apply {
+            name =
+                "Volt1-Crop-Range"
+
+            start()
+        }
+    }
+
+    private fun saveAs() {
+        val info =
+            currentInfo ?: return
+
+        player.stop()
+
+        setEditingBusy(
+            true,
+            "Saving current edit…"
+        )
+
+        val baseName =
+            sessionDisplayName
+                ?: info.displayName
+
+        Thread {
+            try {
+                val newName =
+                    WavFile.saveAsCopy(
+                        context = this,
+                        info = info,
+                        baseDisplayName =
+                            baseName
+                    )
+
                 val newUri =
                     findMediaStoreUri(
                         newName
                     )
                     ?: error(
-                        "Новый WAV не найден в MediaStore"
+                        "Сохранённый WAV не найден в MediaStore"
                     )
+
+                val oldWorking =
+                    workingUri
+
+                workingUri =
+                    null
+
+                editDirty =
+                    false
+
+                sessionDisplayName =
+                    newName
+
+                WavFile.discardPending(
+                    this,
+                    oldWorking
+                )
 
                 runOnUiThread {
                     setEditingBusy(
                         false,
-                        "Saved"
+                        "Saved: $newName"
                     )
 
                     loadRecording(
@@ -1129,9 +1293,24 @@ class MainActivity : Activity() {
             }
         }.apply {
             name =
-                "Volt1-Keep-Range"
+                "Volt1-Save-As"
 
             start()
+        }
+    }
+
+    private fun clearWorkingCopy() {
+        val uri =
+            workingUri
+
+        workingUri =
+            null
+
+        if (uri != null) {
+            WavFile.discardPending(
+                this,
+                uri
+            )
         }
     }
 
@@ -1197,8 +1376,11 @@ class MainActivity : Activity() {
         deleteButton.isEnabled =
             hasRange
 
-        keepButton.isEnabled =
+        cropButton.isEnabled =
             hasRange
+
+        saveAsButton.isEnabled =
+            hasFile
 
         val controls =
             listOf(
@@ -1206,7 +1388,8 @@ class MainActivity : Activity() {
                 playButton,
                 stopPlaybackButton,
                 deleteButton,
-                keepButton
+                cropButton,
+                saveAsButton
             )
 
         controls.forEach {
@@ -1242,7 +1425,8 @@ class MainActivity : Activity() {
             stopPlaybackButton.isEnabled = false
             fitButton.isEnabled = false
             deleteButton.isEnabled = false
-            keepButton.isEnabled = false
+            cropButton.isEnabled = false
+            saveAsButton.isEnabled = false
         } else {
             updateEditButtons(
                 RecorderService.recording

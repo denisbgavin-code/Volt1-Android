@@ -467,6 +467,9 @@ class MainActivity : Activity() {
                     )
                 } else {
                     player.stop()
+                    waveformView.setPlaybackPosition(
+                        null
+                    )
                 }
             }
 
@@ -669,6 +672,9 @@ class MainActivity : Activity() {
         }
 
         player.stop()
+        waveformView.setPlaybackPosition(
+            null
+        )
         clearWorkingCopy()
         currentInfo = null
         sessionDisplayName = null
@@ -916,6 +922,9 @@ class MainActivity : Activity() {
         displayName: String
     ) {
         player.stop()
+        waveformView.setPlaybackPosition(
+            null
+        )
 
         val generation =
             ++loadGeneration
@@ -1019,12 +1028,26 @@ class MainActivity : Activity() {
                 frames.first,
             endFrameExclusive =
                 frames.second,
+            onProgress = {
+                position ->
+                runOnUiThread {
+                    waveformView
+                        .setPlaybackPosition(
+                            position
+                        )
+                }
+            },
             onFinished = {
                 error ->
-                if (
-                    error != null
-                ) {
-                    runOnUiThread {
+                runOnUiThread {
+                    waveformView
+                        .setPlaybackPosition(
+                            null
+                        )
+
+                    if (
+                        error != null
+                    ) {
                         showMessage(
                             error
                         )

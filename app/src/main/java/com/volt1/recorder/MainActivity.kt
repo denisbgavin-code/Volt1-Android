@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var meterView: ProgressBar
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
+    private lateinit var editorButton: Button
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -74,6 +75,7 @@ class MainActivity : Activity() {
             val voltPresent = findVolt() != null
             startButton.isEnabled = voltPresent && !RecorderService.recording
             stopButton.isEnabled = RecorderService.recording
+            editorButton.isEnabled = !RecorderService.recording
 
             handler.postDelayed(this, 200L)
         }
@@ -92,6 +94,7 @@ class MainActivity : Activity() {
         meterView = findViewById(R.id.meter)
         startButton = findViewById(R.id.start)
         stopButton = findViewById(R.id.stop)
+        editorButton = findViewById(R.id.openEditor)
 
         findViewById<Button>(R.id.refresh).setOnClickListener {
             refreshVolt()
@@ -110,6 +113,12 @@ class MainActivity : Activity() {
                 Intent(this, RecorderService::class.java).apply {
                     action = RecorderService.ACTION_STOP
                 }
+            )
+        }
+
+        editorButton.setOnClickListener {
+            startActivity(
+                Intent(this, EditorActivity::class.java)
             )
         }
 

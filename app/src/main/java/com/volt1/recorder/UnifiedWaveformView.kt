@@ -83,6 +83,18 @@ class UnifiedWaveformView @JvmOverloads constructor(
             strokeWidth = density(2f)
         }
 
+    private val playbackHeadPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(238, 190, 72)
+            strokeWidth = density(2.5f)
+        }
+
+    private val playbackHeadFillPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(238, 190, 72)
+            style = Paint.Style.FILL
+        }
+
     private val rulerPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(113, 124, 140)
@@ -201,6 +213,9 @@ class UnifiedWaveformView @JvmOverloads constructor(
     private var lastTouchX =
         0f
 
+    private var playbackPosition:
+        Float? = null
+
     var onSelectionChanged:
         ((Float, Float) -> Unit)? = null
 
@@ -212,6 +227,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
         selectionEnd = 1f
         visibleStart = 0f
         visibleEnd = 1f
+        playbackPosition = null
         invalidate()
     }
 
@@ -223,6 +239,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
         durationMs = 0L
         visibleStart = 0f
         visibleEnd = 1f
+        playbackPosition = null
         invalidate()
     }
 
@@ -245,6 +262,60 @@ class UnifiedWaveformView @JvmOverloads constructor(
                 selectionStart,
                 selectionEnd
             )
+        }
+
+        if (resetViewport) {
+            playbackPosition = null
+        }
+
+        invalidate()
+    }
+
+    fun setPlaybackPosition(
+        fraction: Float?
+    ) {
+        playbackPosition =
+            fraction?.coerceIn(
+                0f,
+                1f
+            )
+
+        val position =
+            playbackPosition
+
+        if (
+            mode == Mode.EDIT &&
+            position != null
+        ) {
+            val span =
+                visibleEnd -
+                    visibleStart
+
+            if (
+                span < 0.9999f &&
+                (
+                    position <
+                        visibleStart ||
+                        position >
+                        visibleEnd
+                    )
+            ) {
+                val newStart =
+                    (
+                        position -
+                            span / 2f
+                        ).coerceIn(
+                            0f,
+                            1f - span
+                        )
+
+                visibleStart =
+                    newStart
+
+                visibleEnd =
+                    newStart +
+                        span
+            }
         }
 
         invalidate()
@@ -350,6 +421,12 @@ class UnifiedWaveformView @JvmOverloads constructor(
                 canvas,
                 w
             )
+
+            drawPlaybackHead(
+                canvas,
+                h,
+                contentTop
+            )
         }
 
         if (mode == Mode.LIVE) {
@@ -361,6 +438,45 @@ class UnifiedWaveformView @JvmOverloads constructor(
                 playheadPaint
             )
         }
+    }
+
+    private fun drawPlaybackHead(
+        canvas: Canvas,
+        height: Float,
+        contentTop: Float
+    ) {
+        val position =
+            playbackPosition ?: return
+
+        if (
+            position <
+            visibleStart ||
+            position >
+            visibleEnd
+        ) {
+            return
+        }
+
+        val x =
+            timelineToX(
+                position
+            )
+
+        canvas.drawLine(
+            x,
+            contentTop,
+            x,
+            height,
+            playbackHeadPaint
+        )
+
+        canvas.drawCircle(
+            x,
+            contentTop +
+                density(6f),
+            density(4.5f),
+            playbackHeadFillPaint
+        )
     }
 
     private fun drawGrid(

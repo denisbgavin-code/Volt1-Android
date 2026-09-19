@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.os.SystemClock
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -27,6 +28,7 @@ class Pcm24Player {
         info: WavInfo,
         startFrame: Long,
         endFrameExclusive: Long,
+        onProgress: (Float) -> Unit,
         onFinished: (String?) -> Unit
     ) {
         stop()
@@ -133,11 +135,11 @@ class Pcm24Player {
                             info.totalFrames
                         )
 
+                    val selectionFrames =
+                        safeEnd - safeStart
+
                     var remaining =
-                        (
-                            safeEnd -
-                                safeStart
-                            ) *
+                        selectionFrames *
                             info.frameSizeBytes
 
                     val pfd =
@@ -167,6 +169,11 @@ class Pcm24Player {
                                 ByteBuffer.allocateDirect(
                                     bufferSize
                                 )
+
+                            onProgress(
+                                safeStart.toFloat() /
+                                    info.totalFrames.toFloat()
+                            )
 
                             track.play()
 
@@ -240,10 +247,55 @@ class Pcm24Player {
                                                 written
                                         )
                                     }
+
+                                    reportProgress(
+                                        track = track,
+                                        safeStart = safeStart,
+                                        selectionFrames =
+                                            selectionFrames,
+                                        totalFrames =
+                                            info.totalFrames,
+                                        onProgress =
+                                            onProgress
+                                    )
                                 }
 
                                 remaining -=
                                     readTotal
+                            }
+
+                            while (
+                                !localStop.get()
+                            ) {
+                                val played =
+                                    playbackHeadFrames(
+                                        track
+                                    )
+                                        .coerceAtMost(
+                                            selectionFrames
+                                        )
+
+                                reportProgress(
+                                    track = track,
+                                    safeStart = safeStart,
+                                    selectionFrames =
+                                        selectionFrames,
+                                    totalFrames =
+                                        info.totalFrames,
+                                    onProgress =
+                                        onProgress
+                                )
+
+                                if (
+                                    played >=
+                                    selectionFrames
+                                ) {
+                                    break
+                                }
+
+                                SystemClock.sleep(
+                                    PROGRESS_POLL_MS
+                                )
                             }
                         }
                     }
@@ -318,6 +370,51 @@ class Pcm24Player {
             null
     }
 
+    private fun reportProgress(
+        track: AudioTrack,
+        safeStart: Long,
+        selectionFrames: Long,
+        totalFrames: Long,
+        onProgress: (Float) -> Unit
+    ) {
+        if (
+            totalFrames <= 0L
+        ) {
+            return
+        }
+
+        val played =
+            playbackHeadFrames(
+                track
+            ).coerceIn(
+                0L,
+                selectionFrames
+            )
+
+        val absoluteFrame =
+            safeStart +
+                played
+
+        onProgress(
+            (
+                absoluteFrame.toDouble() /
+                    totalFrames.toDouble()
+                )
+                .toFloat()
+                .coerceIn(
+                    0f,
+                    1f
+                )
+        )
+    }
+
+    private fun playbackHeadFrames(
+        track: AudioTrack
+    ): Long =
+        track.playbackHeadPosition
+            .toLong() and
+            0xffffffffL
+
     private fun alignUp(
         value: Int,
         alignment: Int
@@ -334,5 +431,10 @@ class Pcm24Player {
                 alignment -
                 remainder
         }
+    }
+
+    companion object {
+        private const val PROGRESS_POLL_MS =
+            20L
     }
 }

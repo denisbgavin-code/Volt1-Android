@@ -40,6 +40,7 @@ object WavFile {
     private const val REQUIRED_BITS = 24
     private const val REQUIRED_CHANNELS = 1
     private const val PCM24_MAX = 8_388_607f
+    private const val DECLICK_FADE_MS = 5L
 
     fun readInfo(
         context: Context,
@@ -204,11 +205,11 @@ object WavFile {
     fun loadWaveform(
         context: Context,
         info: WavInfo,
-        pointCount: Int = 900
+        pointCount: Int = 6_000
     ): FloatArray {
         validateEditable(info)
 
-        val points = pointCount.coerceIn(64, 1600)
+        val points = pointCount.coerceIn(64, 12_000)
         val peaks = FloatArray(points)
         val totalFrames = info.totalFrames
 
@@ -387,6 +388,390 @@ object WavFile {
                 runCatching { writer.abort() }
             }
         }
+    }
+
+    fun deleteSelection(
+        context: Context,
+        info: WavInfo,
+        startFrame: Long,
+        endFrameExclusive: Long
+    ): String {
+        validateEditable(info)
+
+        val start =
+            startFrame.coerceIn(
+                0L,
+                info.totalFrames - 1L
+            )
+
+        val end =
+            endFrameExclusive.coerceIn(
+                start + 1L,
+                info.totalFrames
+            )
+
+        if (
+            start == 0L &&
+            end == info.totalFrames
+        ) {
+            error(
+                "Нельзя удалить весь трек"
+            )
+        }
+
+        val baseName =
+            info.displayName
+                .removeSuffix(".wav")
+                .removeSuffix(".WAV")
+
+        val writer =
+            Wav24Writer(
+                context = context,
+                sampleRate = info.sampleRate,
+                channels = info.channels,
+                displayNameOverride =
+                    "${baseName}_cut_${System.currentTimeMillis()}.wav"
+            )
+
+        var completed =
+            false
+
+        try {
+            val pfd =
+                context.contentResolver
+                    .openFileDescriptor(
+                        info.uri,
+                        "r"
+                    )
+                    ?: error(
+                        "Не удалось открыть исходный WAV"
+                    )
+
+            pfd.use { descriptor ->
+                FileInputStream(
+                    descriptor.fileDescriptor
+                ).use { input ->
+                    val channel =
+                        input.channel
+
+                    val availableBefore =
+                        start
+
+                    val availableAfter =
+                        info.totalFrames -
+                            end
+
+                    val fadeFrames =
+                        min(
+                            (
+                                info.sampleRate *
+                                    DECLICK_FADE_MS /
+                                    1000L
+                                ),
+                            min(
+                                availableBefore,
+                                availableAfter
+                            )
+                        ).toInt()
+
+                    if (fadeFrames > 1) {
+                        val fadeStart =
+                            start -
+                                fadeFrames
+
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = 0L,
+                            endFrameExclusive =
+                                fadeStart
+                        )
+
+                        writeFadedFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame =
+                                fadeStart,
+                            frameCount =
+                                fadeFrames,
+                            fadeIn = false
+                        )
+
+                        writeFadedFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = end,
+                            frameCount =
+                                fadeFrames,
+                            fadeIn = true
+                        )
+
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame =
+                                end +
+                                    fadeFrames,
+                            endFrameExclusive =
+                                info.totalFrames
+                        )
+                    } else {
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = 0L,
+                            endFrameExclusive =
+                                start
+                        )
+
+                        copyFrames(
+                            channel = channel,
+                            writer = writer,
+                            info = info,
+                            startFrame = end,
+                            endFrameExclusive =
+                                info.totalFrames
+                        )
+                    }
+                }
+            }
+
+            writer.closeAndPublish()
+            completed = true
+            return writer.displayName
+
+        } finally {
+            if (!completed) {
+                runCatching {
+                    writer.abort()
+                }
+            }
+        }
+    }
+
+    private fun copyFrames(
+        channel: java.nio.channels.FileChannel,
+        writer: Wav24Writer,
+        info: WavInfo,
+        startFrame: Long,
+        endFrameExclusive: Long
+    ) {
+        if (
+            endFrameExclusive <=
+            startFrame
+        ) {
+            return
+        }
+
+        channel.position(
+            info.dataOffset +
+                startFrame *
+                info.frameSizeBytes
+        )
+
+        var remaining =
+            (
+                endFrameExclusive -
+                    startFrame
+                ) *
+                info.frameSizeBytes
+
+        val blockSize =
+            alignDown(
+                256 * 1024,
+                info.frameSizeBytes
+            )
+
+        val buffer =
+            ByteBuffer.allocateDirect(
+                blockSize
+            )
+
+        while (
+            remaining > 0L
+        ) {
+            buffer.clear()
+
+            val requested =
+                min(
+                    buffer.capacity()
+                        .toLong(),
+                    remaining
+                ).toInt()
+
+            buffer.limit(
+                requested
+            )
+
+            var readTotal =
+                0
+
+            while (
+                readTotal <
+                requested
+            ) {
+                val read =
+                    channel.read(
+                        buffer
+                    )
+
+                if (
+                    read < 0
+                ) {
+                    error(
+                        "Неожиданный конец исходного WAV"
+                    )
+                }
+
+                readTotal +=
+                    read
+            }
+
+            writer.write(
+                buffer,
+                readTotal
+            )
+
+            remaining -=
+                readTotal
+        }
+    }
+
+    private fun writeFadedFrames(
+        channel: java.nio.channels.FileChannel,
+        writer: Wav24Writer,
+        info: WavInfo,
+        startFrame: Long,
+        frameCount: Int,
+        fadeIn: Boolean
+    ) {
+        if (
+            frameCount <= 0
+        ) {
+            return
+        }
+
+        val bytes =
+            frameCount *
+                info.frameSizeBytes
+
+        val source =
+            ByteBuffer.allocate(
+                bytes
+            )
+
+        channel.position(
+            info.dataOffset +
+                startFrame *
+                info.frameSizeBytes
+        )
+
+        readFully(
+            channel,
+            source
+        )
+
+        source.flip()
+
+        val output =
+            ByteBuffer.allocateDirect(
+                bytes
+            )
+
+        repeat(
+            frameCount
+        ) { index ->
+            val b0 =
+                source.get()
+                    .toInt() and
+                    0xff
+
+            val b1 =
+                source.get()
+                    .toInt() and
+                    0xff
+
+            val b2 =
+                source.get()
+                    .toInt() and
+                    0xff
+
+            var sample =
+                b0 or
+                    (b1 shl 8) or
+                    (b2 shl 16)
+
+            if (
+                sample and
+                0x800000 != 0
+            ) {
+                sample =
+                    sample or
+                        -0x1000000
+            }
+
+            val ratio =
+                if (
+                    frameCount <= 1
+                ) {
+                    1.0
+                } else {
+                    index.toDouble() /
+                        (
+                            frameCount -
+                                1
+                            ).toDouble()
+                }
+
+            val gain =
+                if (fadeIn) {
+                    ratio
+                } else {
+                    1.0 -
+                        ratio
+                }
+
+            val scaled =
+                (
+                    sample *
+                        gain
+                    ).toInt()
+                    .coerceIn(
+                        -8_388_608,
+                        8_388_607
+                    )
+
+            output.put(
+                (
+                    scaled and
+                        0xff
+                    ).toByte()
+            )
+
+            output.put(
+                (
+                    scaled ushr 8 and
+                        0xff
+                    ).toByte()
+            )
+
+            output.put(
+                (
+                    scaled ushr 16 and
+                        0xff
+                    ).toByte()
+            )
+        }
+
+        writer.write(
+            output,
+            bytes
+        )
     }
 
     private fun alignDown(

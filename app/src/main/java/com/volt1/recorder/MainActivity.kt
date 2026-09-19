@@ -254,6 +254,6 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_PERMISSIONS = 100
         private val VOLT_1_NAME =
-            Regex("""\\bvolt\\s*1\\b""", RegexOption.IGNORE_CASE)
+            Regex("""\bvolt\s*1\b""", RegexOption.IGNORE_CASE)
     }
 }

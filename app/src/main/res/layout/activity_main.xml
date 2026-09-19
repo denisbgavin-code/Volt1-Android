@@ -3,123 +3,357 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
-    android:background="#F6F6F6">
+    android:background="#0B0D10"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="28dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.14"
+                android:text="VOLT // CAPTURE"
+                android:textColor="#5CDCA5"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="v0.3"
+                android:textColor="#7F8793"
+                android:textSize="12sp" />
+        </LinearLayout>
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Volt 1 Recorder"
-            android:textColor="#111111"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="USB Audio Recorder"
+            android:textColor="#F4F7FA"
             android:textSize="30sp"
             android:textStyle="bold" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="PCM WAV • 24 bit • 48 000 Hz • mono"
-            android:textColor="#555555"
-            android:textSize="15sp" />
-
-        <TextView
-            android:id="@+id/device"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
-            android:background="#FFFFFF"
-            android:padding="16dp"
-            android:text="Поиск Volt 1…"
-            android:textColor="#222222"
-            android:textIsSelectable="true"
-            android:textSize="15sp" />
+            android:layout_marginTop="4dp"
+            android:text="24-bit / 48 kHz WAV • Volt 1 input 1"
+            android:textColor="#8C95A3"
+            android:textSize="14sp" />
 
-        <Button
-            android:id="@+id/refresh"
+        <LinearLayout
+            android:id="@+id/deviceCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Обновить устройство" />
+            android:layout_marginTop="20dp"
+            android:background="@drawable/studio_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/deviceStateDot"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="●"
+                    android:textColor="#6B7280"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/device"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Volt 1"
+                    android:textColor="#F4F7FA"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/refresh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="42dp"
+                    android:background="@drawable/studio_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:stateListAnimator="@null"
+                    android:text="REFRESH"
+                    android:textAllCaps="false"
+                    android:textColor="#D8DDE5"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/deviceMeta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:fontFamily="monospace"
+                android:text="USB interface not connected"
+                android:textColor="#8C95A3"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="CAPTURE  PCM32 / 48 kHz   →   FILE  PCM24 / 48 kHz / MONO"
+                android:textColor="#5CDCA5"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/studio_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="INPUT 1 • LIVE WAVEFORM"
+                    android:textColor="#8C95A3"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/recordState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="○ OFFLINE"
+                    android:textColor="#7F8793"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/recordTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:fontFamily="monospace"
+                android:text="00:00:00.0"
+                android:textColor="#F4F7FA"
+                android:textSize="36sp"
+                android:textStyle="bold" />
+
+            <com.volt1.recorder.LiveWaveformView
+                android:id="@+id/liveWaveform"
+                android:layout_width="match_parent"
+                android:layout_height="230dp"
+                android:layout_marginTop="8dp"
+                android:background="#101318"
+                android:contentDescription="Живая форма сигнала во время записи" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="PEAK"
+                    android:textColor="#8C95A3"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/peakValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="— dBFS"
+                    android:textColor="#F4F7FA"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <com.volt1.recorder.LevelMeterView
+                android:id="@+id/meter"
+                android:layout_width="match_parent"
+                android:layout_height="14dp"
+                android:layout_marginTop="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="-60"
+                    android:textColor="#626A76"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="-24"
+                    android:textColor="#626A76"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="-12"
+                    android:textColor="#626A76"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0 dBFS"
+                    android:textColor="#626A76"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/start"
+                android:layout_width="0dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1.7"
+                android:background="@drawable/studio_button_record"
+                android:enabled="false"
+                android:stateListAnimator="@null"
+                android:text="●  RECORD"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/stop"
+                android:layout_width="0dp"
+                android:layout_height="70dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_secondary"
+                android:enabled="false"
+                android:stateListAnimator="@null"
+                android:text="■  STOP"
+                android:textAllCaps="false"
+                android:textColor="#F4F7FA"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
-            android:text="Готово"
-            android:textColor="#111111"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/level"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/studio_card"
             android:fontFamily="monospace"
-            android:text="Peak: — dBFS"
-            android:textColor="#333333"
-            android:textSize="18sp" />
+            android:padding="14dp"
+            android:text="Готово"
+            android:textColor="#B9C1CC"
+            android:textSize="12sp" />
 
-        <ProgressBar
-            android:id="@+id/meter"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="18dp"
-            android:layout_marginTop="8dp"
-            android:max="120"
-            android:progress="0" />
-
-        <Button
-            android:id="@+id/start"
-            android:layout_width="match_parent"
-            android:layout_height="64dp"
-            android:layout_marginTop="30dp"
-            android:enabled="false"
-            android:text="ЗАПИСЬ"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/stop"
-            android:layout_width="match_parent"
-            android:layout_height="64dp"
-            android:layout_marginTop="10dp"
-            android:enabled="false"
-            android:text="СТОП"
-            android:textSize="18sp" />
-
-        <TextView
-            android:id="@+id/file"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Файл: —"
-            android:textColor="#555555"
-            android:textIsSelectable="true"
-            android:textSize="14sp" />
+            android:layout_marginTop="16dp"
+            android:background="@drawable/studio_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
-        <Button
-            android:id="@+id/openEditor"
-            android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:layout_marginTop="18dp"
-            android:text="РЕДАКТОР АУДИО"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="LAST TAKE"
+                android:textColor="#8C95A3"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/file"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:ellipsize="middle"
+                android:maxLines="2"
+                android:text="No recording yet"
+                android:textColor="#F4F7FA"
+                android:textIsSelectable="true"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/openEditor"
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/studio_button_accent"
+                android:stateListAnimator="@null"
+                android:text="OPEN WAVEFORM EDITOR  →"
+                android:textAllCaps="false"
+                android:textColor="#0B0D10"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
-            android:text="Запись начинается только если Android подтверждает фактический USB-маршрут через Volt 1, аппаратную частоту 48 кГц и формат выше 16 бит. При смене маршрута, ресэмплинге, системной обработке или отключении USB запись останавливается."
-            android:textColor="#666666"
-            android:textSize="13sp" />
+            android:layout_marginTop="16dp"
+            android:lineSpacingExtra="2dp"
+            android:text="Safety mode: recording starts only after the real Volt 1 USB route, 48 kHz hardware rate and high-resolution PCM path are validated. Route changes, resampling, processing or USB disconnect abort the take."
+            android:textColor="#69717D"
+            android:textSize="11sp" />
 
     </LinearLayout>
 </ScrollView>

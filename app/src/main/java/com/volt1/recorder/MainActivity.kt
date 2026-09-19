@@ -20,6 +20,7 @@ import android.provider.OpenableColumns
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import java.util.ArrayDeque
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -95,6 +96,18 @@ class MainActivity : Activity() {
     private var editDirty =
         false
 
+    private var playbackPosition =
+        0f
+
+    private var playbackActive =
+        false
+
+    private val editHistory =
+        ArrayDeque<EditState>()
+
+    private val ownedWorkingUris =
+        linkedSetOf<Uri>()
+
     private var selectionStart =
         0f
 
@@ -143,7 +156,9 @@ class MainActivity : Activity() {
                     !previousRecordingState
                 ) {
                     player.stop()
-                    clearWorkingCopy()
+                    playbackActive = false
+                    playbackPosition = 0f
+                    clearEditingSession()
                     currentInfo = null
                     sessionDisplayName = null
                     editDirty = false
@@ -181,13 +196,24 @@ class MainActivity : Activity() {
                 val info =
                     currentInfo
 
+                val displayTimeMs =
+                    when {
+                        recording ->
+                            RecorderService.elapsedMs
+
+                        info != null ->
+                            (
+                                info.durationMs *
+                                    playbackPosition
+                                ).toLong()
+
+                        else ->
+                            0L
+                    }
+
                 recordTimeView.text =
                     formatDuration(
-                        if (recording) {
-                            RecorderService.elapsedMs
-                        } else {
-                            info?.durationMs ?: 0L
-                        }
+                        displayTimeMs
                     )
 
                 val peak =
@@ -218,6 +244,16 @@ class MainActivity : Activity() {
                         recordStateView
                             .setTextColor(
                                 COLOR_RECORDING
+                            )
+                    }
+
+                    playbackActive -> {
+                        recordStateView.text =
+                            "▶ PLAY"
+
+                        recordStateView
+                            .setTextColor(
+                                COLOR_READY
                             )
                     }
 
@@ -300,10 +336,7 @@ class MainActivity : Activity() {
 
                 stopButton.isEnabled =
                     recording ||
-                        (
-                            !recording &&
-                                info != null
-                            )
+                        playbackActive
 
                 openFileButton.isEnabled =
                     !recording
@@ -440,6 +473,21 @@ class MainActivity : Activity() {
                 )
             }
 
+        waveformView
+            .onPlayheadChanged =
+            { position ->
+                if (
+                    playbackActive
+                ) {
+                    player.stop()
+                    playbackActive =
+                        false
+                }
+
+                playbackPosition =
+                    position
+            }
+
         startButton
             .setOnClickListener {
                 if (
@@ -467,9 +515,8 @@ class MainActivity : Activity() {
                     )
                 } else {
                     player.stop()
-                    waveformView.setPlaybackPosition(
-                        null
-                    )
+                    playbackActive =
+                        false
                 }
             }
 
@@ -537,7 +584,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         player.stop()
-        clearWorkingCopy()
+        clearEditingSession()
 
         audioManager
             .unregisterAudioDeviceCallback(
@@ -672,10 +719,9 @@ class MainActivity : Activity() {
         }
 
         player.stop()
-        waveformView.setPlaybackPosition(
-            null
-        )
-        clearWorkingCopy()
+        playbackActive = false
+        playbackPosition = 0f
+        clearEditingSession()
         currentInfo = null
         sessionDisplayName = null
         editDirty = false

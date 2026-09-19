@@ -2,59 +2,119 @@ package com.volt1.recorder
 
 import android.Manifest
 import android.app.Activity
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
-import android.media.AudioFormat
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.max
 
 class MainActivity : Activity() {
 
-    private lateinit var audioManager: AudioManager
+    private lateinit var audioManager:
+        AudioManager
 
-    private lateinit var deviceCard: LinearLayout
-    private lateinit var deviceStateDot: TextView
-    private lateinit var deviceView: TextView
-    private lateinit var deviceMetaView: TextView
+    private lateinit var deviceStatusView:
+        TextView
 
-    private lateinit var statusView: TextView
-    private lateinit var recordStateView: TextView
-    private lateinit var recordTimeView: TextView
-    private lateinit var peakValueView: TextView
-    private lateinit var fileView: TextView
+    private lateinit var statusView:
+        TextView
 
-    private lateinit var waveformView: LiveWaveformView
-    private lateinit var meterView: LevelMeterView
+    private lateinit var recordStateView:
+        TextView
 
-    private lateinit var startButton: Button
-    private lateinit var stopButton: Button
-    private lateinit var editorButton: Button
+    private lateinit var recordTimeView:
+        TextView
 
-    private var detectedVolt: AudioDeviceInfo? = null
+    private lateinit var peakValueView:
+        TextView
+
+    private lateinit var fileView:
+        TextView
+
+    private lateinit var waveformView:
+        UnifiedWaveformView
+
+    private lateinit var meterView:
+        LevelMeterView
+
+    private lateinit var startButton:
+        Button
+
+    private lateinit var stopButton:
+        Button
+
+    private lateinit var openFileButton:
+        Button
+
+    private lateinit var fitButton:
+        Button
+
+    private lateinit var playButton:
+        Button
+
+    private lateinit var stopPlaybackButton:
+        Button
+
+    private lateinit var deleteButton:
+        Button
+
+    private lateinit var keepButton:
+        Button
+
+    private val player =
+        Pcm24Player()
+
+    private var detectedVolt:
+        AudioDeviceInfo? = null
+
+    private var currentInfo:
+        WavInfo? = null
+
+    private var selectionStart =
+        0f
+
+    private var selectionEnd =
+        1f
+
+    private var loadGeneration =
+        0
+
+    private var previousRecordingState =
+        false
 
     private val handler =
-        Handler(Looper.getMainLooper())
+        Handler(
+            Looper.getMainLooper()
+        )
 
     private val deviceCallback =
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(
-                addedDevices: Array<out AudioDeviceInfo>
+                addedDevices:
+                    Array<out AudioDeviceInfo>
             ) {
                 refreshVolt()
             }
 
             override fun onAudioDevicesRemoved(
-                removedDevices: Array<out AudioDeviceInfo>
+                removedDevices:
+                    Array<out AudioDeviceInfo>
             ) {
                 refreshVolt()
             }
@@ -66,24 +126,66 @@ class MainActivity : Activity() {
                 val recording =
                     RecorderService.recording
 
-                val elapsed =
-                    RecorderService.elapsedMs
+                val voltPresent =
+                    detectedVolt != null
+
+                if (
+                    recording &&
+                    !previousRecordingState
+                ) {
+                    player.stop()
+                    currentInfo = null
+                    selectionStart = 0f
+                    selectionEnd = 1f
+
+                    waveformView.showLive(
+                        FloatArray(0)
+                    )
+                }
+
+                if (recording) {
+                    waveformView.showLive(
+                        RecordingWaveformBuffer
+                            .snapshot()
+                    )
+                }
+
+                if (
+                    !recording &&
+                    previousRecordingState
+                ) {
+                    val finishedName =
+                        RecorderService.currentFile
+
+                    if (
+                        finishedName.isNotBlank()
+                    ) {
+                        loadAppRecording(
+                            finishedName
+                        )
+                    }
+                }
+
+                val info =
+                    currentInfo
+
+                recordTimeView.text =
+                    formatDuration(
+                        if (recording) {
+                            RecorderService.elapsedMs
+                        } else {
+                            info?.durationMs ?: 0L
+                        }
+                    )
 
                 val peak =
                     RecorderService.peakDb
 
-                val voltPresent =
-                    detectedVolt != null
-
-                statusView.text =
-                    RecorderService.status
-
-                recordTimeView.text =
-                    formatDuration(elapsed)
-
                 peakValueView.text =
                     if (recording) {
-                        "%6.1f dBFS".format(peak)
+                        "%6.1f dBFS".format(
+                            peak
+                        )
                     } else {
                         "— dBFS"
                     }
@@ -96,81 +198,103 @@ class MainActivity : Activity() {
                     }
                 )
 
-                waveformView.setWaveform(
-                    RecordingWaveformBuffer.snapshot(),
-                    recording
-                )
-
                 when {
                     recording -> {
                         recordStateView.text =
                             "● REC"
 
-                        recordStateView.setTextColor(
-                            COLOR_RECORDING
-                        )
+                        recordStateView
+                            .setTextColor(
+                                COLOR_RECORDING
+                            )
+                    }
+
+                    info != null -> {
+                        recordStateView.text =
+                            "● EDIT"
+
+                        recordStateView
+                            .setTextColor(
+                                COLOR_READY
+                            )
                     }
 
                     voltPresent -> {
                         recordStateView.text =
                             "● READY"
 
-                        recordStateView.setTextColor(
-                            COLOR_READY
-                        )
+                        recordStateView
+                            .setTextColor(
+                                COLOR_READY
+                            )
                     }
 
                     else -> {
                         recordStateView.text =
                             "○ OFFLINE"
 
-                        recordStateView.setTextColor(
-                            COLOR_MUTED
-                        )
+                        recordStateView
+                            .setTextColor(
+                                COLOR_MUTED
+                            )
                     }
                 }
 
+                val serviceStatus =
+                    RecorderService.status
+
+                statusView.text =
+                    if (
+                        recording ||
+                        serviceStatus.startsWith(
+                            "Запись остановлена"
+                        )
+                    ) {
+                        serviceStatus
+                    } else if (
+                        info != null
+                    ) {
+                        "EDIT • PCM24 / 48 kHz / mono"
+                    } else {
+                        serviceStatus
+                    }
+
                 fileView.text =
-                    RecorderService.currentFile
-                        .ifBlank {
-                            "No recording yet"
-                        }
+                    info?.displayName
+                        ?: RecorderService
+                            .currentFile
+                            .ifBlank {
+                                "No file loaded"
+                            }
 
                 startButton.isEnabled =
-                    voltPresent && !recording
+                    voltPresent &&
+                        !recording
 
                 stopButton.isEnabled =
                     recording
 
-                editorButton.isEnabled =
+                openFileButton.isEnabled =
                     !recording
 
-                startButton.alpha =
-                    if (
-                        startButton.isEnabled
-                    ) {
-                        1f
-                    } else {
-                        0.48f
-                    }
+                fitButton.isEnabled =
+                    !recording &&
+                        info != null
 
-                stopButton.alpha =
-                    if (
-                        stopButton.isEnabled
-                    ) {
-                        1f
-                    } else {
-                        0.48f
-                    }
+                playButton.isEnabled =
+                    !recording &&
+                        info != null
 
-                editorButton.alpha =
-                    if (
-                        editorButton.isEnabled
-                    ) {
-                        1f
-                    } else {
-                        0.48f
-                    }
+                stopPlaybackButton.isEnabled =
+                    !recording &&
+                        info != null
+
+                updateEditButtons(
+                    recording
+                )
+
+                previousRecordingState =
+                    recording
 
                 handler.postDelayed(
                     this,
@@ -182,96 +306,174 @@ class MainActivity : Activity() {
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        super.onCreate(
+            savedInstanceState
+        )
+
+        setContentView(
+            R.layout.activity_main
+        )
 
         audioManager =
             getSystemService(
                 Context.AUDIO_SERVICE
             ) as AudioManager
 
-        deviceCard =
-            findViewById(R.id.deviceCard)
-
-        deviceStateDot =
-            findViewById(R.id.deviceStateDot)
-
-        deviceView =
-            findViewById(R.id.device)
-
-        deviceMetaView =
-            findViewById(R.id.deviceMeta)
+        deviceStatusView =
+            findViewById(
+                R.id.deviceStatus
+            )
 
         statusView =
-            findViewById(R.id.status)
+            findViewById(
+                R.id.status
+            )
 
         recordStateView =
-            findViewById(R.id.recordState)
+            findViewById(
+                R.id.recordState
+            )
 
         recordTimeView =
-            findViewById(R.id.recordTime)
+            findViewById(
+                R.id.recordTime
+            )
 
         peakValueView =
-            findViewById(R.id.peakValue)
+            findViewById(
+                R.id.peakValue
+            )
 
         fileView =
-            findViewById(R.id.file)
+            findViewById(
+                R.id.file
+            )
 
         waveformView =
-            findViewById(R.id.liveWaveform)
+            findViewById(
+                R.id.waveform
+            )
 
         meterView =
-            findViewById(R.id.meter)
+            findViewById(
+                R.id.meter
+            )
 
         startButton =
-            findViewById(R.id.start)
+            findViewById(
+                R.id.start
+            )
 
         stopButton =
-            findViewById(R.id.stop)
-
-        editorButton =
-            findViewById(R.id.openEditor)
-
-        findViewById<Button>(
-            R.id.refresh
-        ).setOnClickListener {
-            refreshVolt()
-        }
-
-        startButton.setOnClickListener {
-            if (hasRecordPermission()) {
-                startCapture()
-            } else {
-                requestRequiredPermissions()
-            }
-        }
-
-        stopButton.setOnClickListener {
-            startService(
-                Intent(
-                    this,
-                    RecorderService::class.java
-                ).apply {
-                    action =
-                        RecorderService.ACTION_STOP
-                }
+            findViewById(
+                R.id.stop
             )
-        }
 
-        editorButton.setOnClickListener {
-            startActivity(
-                Intent(
-                    this,
-                    EditorActivity::class.java
+        openFileButton =
+            findViewById(
+                R.id.openFile
+            )
+
+        fitButton =
+            findViewById(
+                R.id.fitWaveform
+            )
+
+        playButton =
+            findViewById(
+                R.id.playSelection
+            )
+
+        stopPlaybackButton =
+            findViewById(
+                R.id.stopPlayback
+            )
+
+        deleteButton =
+            findViewById(
+                R.id.deleteSelection
+            )
+
+        keepButton =
+            findViewById(
+                R.id.keepSelection
+            )
+
+        waveformView
+            .onSelectionChanged =
+            { start, end ->
+                selectionStart =
+                    start
+
+                selectionEnd =
+                    end
+
+                updateEditButtons(
+                    RecorderService.recording
                 )
+            }
+
+        startButton
+            .setOnClickListener {
+                if (
+                    hasRecordPermission()
+                ) {
+                    startCapture()
+                } else {
+                    requestRequiredPermissions()
+                }
+            }
+
+        stopButton
+            .setOnClickListener {
+                startService(
+                    Intent(
+                        this,
+                        RecorderService::class.java
+                    ).apply {
+                        action =
+                            RecorderService.ACTION_STOP
+                    }
+                )
+            }
+
+        openFileButton
+            .setOnClickListener {
+                openWavPicker()
+            }
+
+        fitButton
+            .setOnClickListener {
+                waveformView.resetZoom()
+            }
+
+        playButton
+            .setOnClickListener {
+                playSelection()
+            }
+
+        stopPlaybackButton
+            .setOnClickListener {
+                player.stop()
+            }
+
+        deleteButton
+            .setOnClickListener {
+                deleteSelection()
+            }
+
+        keepButton
+            .setOnClickListener {
+                keepSelection()
+            }
+
+        audioManager
+            .registerAudioDeviceCallback(
+                deviceCallback,
+                handler
             )
-        }
 
-        audioManager.registerAudioDeviceCallback(
-            deviceCallback,
-            handler
-        )
-
+        waveformView.showIdle()
         refreshVolt()
     }
 
@@ -298,17 +500,23 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        audioManager.unregisterAudioDeviceCallback(
-            deviceCallback
-        )
+        player.stop()
+
+        audioManager
+            .unregisterAudioDeviceCallback(
+                deviceCallback
+            )
 
         super.onDestroy()
     }
 
-    private fun hasRecordPermission(): Boolean =
+    private fun hasRecordPermission():
+        Boolean =
+
         checkSelfPermission(
             Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
+        ) ==
+            PackageManager.PERMISSION_GRANTED
 
     private fun requestRequiredPermissions() {
         val permissions =
@@ -360,146 +568,73 @@ class MainActivity : Activity() {
         val volt =
             findVolt()
 
-        detectedVolt = volt
+        detectedVolt =
+            volt
 
-        if (volt == null) {
-            deviceCard.setBackgroundResource(
-                R.drawable.studio_card
-            )
+        if (
+            volt == null
+        ) {
+            deviceStatusView.text =
+                "○ Volt 1 offline"
 
-            deviceStateDot.text = "●"
+            deviceStatusView
+                .setTextColor(
+                    COLOR_MUTED
+                )
 
-            deviceStateDot.setTextColor(
-                COLOR_MUTED
-            )
-
-            deviceView.text =
-                "Volt 1"
-
-            deviceMetaView.text =
-                "USB interface not connected\n" +
-                    "Connect Volt 1 via USB-C / OTG."
-
-            startButton.isEnabled = false
             return
         }
 
-        deviceCard.setBackgroundResource(
-            R.drawable
-                .studio_card_connected
-        )
-
-        deviceStateDot.text = "●"
-
-        deviceStateDot.setTextColor(
-            COLOR_READY
-        )
-
-        deviceView.text =
-            volt.productName
-                .toString()
-                .ifBlank {
-                    "Volt 1"
-                }
-
-        val rates =
-            if (
-                volt.sampleRates.isEmpty()
-            ) {
-                "rate metadata unavailable"
-            } else {
-                volt.sampleRates
-                    .joinToString(", ")
-            }
-
-        val encodings =
-            if (
-                volt.encodings.isEmpty()
-            ) {
-                "format metadata unavailable"
-            } else {
-                volt.encodings
-                    .joinToString(", ") {
-                        encodingName(it)
-                    }
-            }
-
-        val channels =
-            if (
-                volt.channelCounts.isEmpty()
-            ) {
-                "?"
-            } else {
-                volt.channelCounts
-                    .joinToString(",")
-            }
-
-        val preflight48k =
+        val supports48k =
             volt.sampleRates.isEmpty() ||
                 48_000 in
                 volt.sampleRates
 
-        deviceMetaView.text =
-            buildString {
-                append(
-                    "USB id "
-                )
-                append(
-                    volt.id
-                )
-                append(
-                    "  •  "
-                )
-                append(
-                    channels
-                )
-                append(
-                    " ch"
-                )
-                appendLine()
-
-                append(
-                    rates
-                )
-                appendLine()
-
-                append(
-                    encodings
-                )
+        deviceStatusView.text =
+            if (supports48k) {
+                "● Volt 1 ready • USB • 48 kHz"
+            } else {
+                "● Volt 1 connected • 48 kHz unavailable"
             }
 
-        if (
-            !preflight48k &&
-            !RecorderService.recording
-        ) {
-            statusView.text =
-                "Volt 1 не объявляет 48 kHz"
-        }
-
-        startButton.isEnabled =
-            preflight48k &&
-                !RecorderService.recording
+        deviceStatusView
+            .setTextColor(
+                if (supports48k) {
+                    COLOR_READY
+                } else {
+                    COLOR_RECORDING
+                }
+            )
     }
 
     private fun startCapture() {
         val volt =
             findVolt()
 
-        if (volt == null) {
-            statusView.text =
+        if (
+            volt == null
+        ) {
+            showMessage(
                 "Volt 1 не найден"
+            )
+
             return
         }
 
         if (
             volt.sampleRates.isNotEmpty() &&
-            48_000 !in volt.sampleRates
+            48_000 !in
+            volt.sampleRates
         ) {
-            statusView.text =
+            showMessage(
                 "Volt 1/Android " +
                     "не объявляет 48 kHz"
+            )
+
             return
         }
+
+        player.stop()
 
         statusView.text =
             "Validating Volt 1 USB capture path…"
@@ -521,27 +656,611 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun encodingName(
-        encoding: Int
-    ): String = when (encoding) {
-        AudioFormat
-            .ENCODING_PCM_16BIT ->
-            "PCM16"
+    private fun openWavPicker() {
+        val intent =
+            Intent(
+                Intent.ACTION_OPEN_DOCUMENT
+            ).apply {
+                addCategory(
+                    Intent.CATEGORY_OPENABLE
+                )
 
-        AudioFormat
-            .ENCODING_PCM_24BIT_PACKED ->
-            "PCM24"
+                type =
+                    "*/*"
 
-        AudioFormat
-            .ENCODING_PCM_32BIT ->
-            "PCM32"
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                )
+            }
 
-        AudioFormat
-            .ENCODING_PCM_FLOAT ->
-            "FLOAT"
+        startActivityForResult(
+            intent,
+            REQUEST_OPEN_WAV
+        )
+    }
 
-        else ->
-            encoding.toString()
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(
+            requestCode,
+            resultCode,
+            data
+        )
+
+        if (
+            requestCode !=
+            REQUEST_OPEN_WAV ||
+            resultCode !=
+            RESULT_OK
+        ) {
+            return
+        }
+
+        val uri =
+            data?.data ?: return
+
+        val takeFlags =
+            data.flags and
+                (
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+
+        runCatching {
+            contentResolver
+                .takePersistableUriPermission(
+                    uri,
+                    takeFlags and
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+        }
+
+        loadRecording(
+            uri = uri,
+            displayName =
+                resolveDisplayName(
+                    uri
+                )
+        )
+    }
+
+    private fun resolveDisplayName(
+        uri: Uri
+    ): String {
+        contentResolver.query(
+            uri,
+            arrayOf(
+                OpenableColumns
+                    .DISPLAY_NAME
+            ),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (
+                cursor.moveToFirst() &&
+                !cursor.isNull(0)
+            ) {
+                return cursor
+                    .getString(0)
+            }
+        }
+
+        return uri.lastPathSegment
+            ?.substringAfterLast(
+                '/'
+            )
+            ?.takeIf {
+                it.isNotBlank()
+            }
+            ?: "selected_audio.wav"
+    }
+
+    private fun loadAppRecording(
+        displayName: String
+    ) {
+        Thread {
+            val uri =
+                findMediaStoreUri(
+                    displayName
+                )
+
+            if (
+                uri == null
+            ) {
+                runOnUiThread {
+                    showMessage(
+                        "Не удалось открыть " +
+                            displayName
+                    )
+                }
+
+                return@Thread
+            }
+
+            runOnUiThread {
+                loadRecording(
+                    uri,
+                    displayName
+                )
+            }
+        }.apply {
+            name =
+                "Volt1-Find-Recording"
+
+            start()
+        }
+    }
+
+    private fun findMediaStoreUri(
+        displayName: String
+    ): Uri? {
+        val projection =
+            arrayOf(
+                MediaStore.Audio.Media._ID
+            )
+
+        val selection =
+            "${MediaStore.Audio.Media.DISPLAY_NAME} = ?"
+
+        val args =
+            arrayOf(
+                displayName
+            )
+
+        val sort =
+            "${MediaStore.Audio.Media.DATE_ADDED} DESC"
+
+        contentResolver.query(
+            MediaStore.Audio.Media
+                .EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            args,
+            sort
+        )?.use { cursor ->
+            if (
+                cursor.moveToFirst()
+            ) {
+                val id =
+                    cursor.getLong(
+                        cursor
+                            .getColumnIndexOrThrow(
+                                MediaStore.Audio.Media._ID
+                            )
+                    )
+
+                return ContentUris
+                    .withAppendedId(
+                        MediaStore.Audio.Media
+                            .EXTERNAL_CONTENT_URI,
+                        id
+                    )
+            }
+        }
+
+        return null
+    }
+
+    private fun loadRecording(
+        uri: Uri,
+        displayName: String
+    ) {
+        player.stop()
+
+        val generation =
+            ++loadGeneration
+
+        statusView.text =
+            "Loading waveform…"
+
+        Thread {
+            try {
+                val info =
+                    WavFile.readInfo(
+                        context = this,
+                        uri = uri,
+                        displayName =
+                            displayName
+                    )
+
+                val peaks =
+                    WavFile.loadWaveform(
+                        context = this,
+                        info = info,
+                        pointCount =
+                            WAVEFORM_POINTS
+                    )
+
+                runOnUiThread {
+                    if (
+                        generation !=
+                        loadGeneration ||
+                        RecorderService.recording
+                    ) {
+                        return@runOnUiThread
+                    }
+
+                    currentInfo =
+                        info
+
+                    selectionStart =
+                        0f
+
+                    selectionEnd =
+                        1f
+
+                    waveformView
+                        .showEditable(
+                            values = peaks,
+                            trackDurationMs =
+                                info.durationMs,
+                            resetViewport =
+                                true
+                        )
+
+                    fileView.text =
+                        info.displayName
+
+                    statusView.text =
+                        "EDIT • PCM24 / 48 kHz / mono"
+
+                    updateEditButtons(
+                        false
+                    )
+                }
+
+            } catch (
+                t: Throwable
+            ) {
+                runOnUiThread {
+                    if (
+                        generation ==
+                        loadGeneration
+                    ) {
+                        showMessage(
+                            t.message
+                                ?: "Не удалось открыть WAV"
+                        )
+                    }
+                }
+            }
+        }.apply {
+            name =
+                "Volt1-Load-Waveform"
+
+            start()
+        }
+    }
+
+    private fun playSelection() {
+        val info =
+            currentInfo ?: return
+
+        val frames =
+            selectedFrames(
+                info
+            )
+
+        player.play(
+            context = this,
+            info = info,
+            startFrame =
+                frames.first,
+            endFrameExclusive =
+                frames.second,
+            onFinished = {
+                error ->
+                if (
+                    error != null
+                ) {
+                    runOnUiThread {
+                        showMessage(
+                            error
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    private fun deleteSelection() {
+        val info =
+            currentInfo ?: return
+
+        val frames =
+            selectedFrames(
+                info
+            )
+
+        val selected =
+            frames.second -
+                frames.first
+
+        if (
+            selected <= 0L ||
+            selected >=
+            info.totalFrames
+        ) {
+            showMessage(
+                "Переместите оба вертикальных маркера " +
+                    "к удаляемому фрагменту"
+            )
+
+            return
+        }
+
+        player.stop()
+        setEditingBusy(
+            true,
+            "Deleting range…"
+        )
+
+        Thread {
+            try {
+                val newName =
+                    WavFile.deleteSelection(
+                        context = this,
+                        info = info,
+                        startFrame =
+                            frames.first,
+                        endFrameExclusive =
+                            frames.second
+                    )
+
+                val newUri =
+                    findMediaStoreUri(
+                        newName
+                    )
+                    ?: error(
+                        "Новый WAV не найден в MediaStore"
+                    )
+
+                runOnUiThread {
+                    setEditingBusy(
+                        false,
+                        "Range deleted"
+                    )
+
+                    loadRecording(
+                        newUri,
+                        newName
+                    )
+                }
+
+            } catch (
+                t: Throwable
+            ) {
+                runOnUiThread {
+                    setEditingBusy(
+                        false,
+                        t.message
+                            ?: "Ошибка удаления"
+                    )
+                }
+            }
+        }.apply {
+            name =
+                "Volt1-Delete-Range"
+
+            start()
+        }
+    }
+
+    private fun keepSelection() {
+        val info =
+            currentInfo ?: return
+
+        val frames =
+            selectedFrames(
+                info
+            )
+
+        val selected =
+            frames.second -
+                frames.first
+
+        if (
+            selected <= 0L ||
+            selected >=
+            info.totalFrames
+        ) {
+            showMessage(
+                "Сдвиньте вертикальные маркеры " +
+                    "к нужному диапазону"
+            )
+
+            return
+        }
+
+        player.stop()
+
+        setEditingBusy(
+            true,
+            "Saving selected range…"
+        )
+
+        Thread {
+            try {
+                val newName =
+                    WavFile.saveSelection(
+                        context = this,
+                        info = info,
+                        startFrame =
+                            frames.first,
+                        endFrameExclusive =
+                            frames.second
+                    )
+
+                val newUri =
+                    findMediaStoreUri(
+                        newName
+                    )
+                    ?: error(
+                        "Новый WAV не найден в MediaStore"
+                    )
+
+                runOnUiThread {
+                    setEditingBusy(
+                        false,
+                        "Saved"
+                    )
+
+                    loadRecording(
+                        newUri,
+                        newName
+                    )
+                }
+
+            } catch (
+                t: Throwable
+            ) {
+                runOnUiThread {
+                    setEditingBusy(
+                        false,
+                        t.message
+                            ?: "Ошибка сохранения"
+                    )
+                }
+            }
+        }.apply {
+            name =
+                "Volt1-Keep-Range"
+
+            start()
+        }
+    }
+
+    private fun selectedFrames(
+        info: WavInfo
+    ): Pair<Long, Long> {
+        val start =
+            floor(
+                info.totalFrames *
+                    selectionStart
+            ).toLong()
+                .coerceIn(
+                    0L,
+                    info.totalFrames - 1L
+                )
+
+        val end =
+            ceil(
+                info.totalFrames *
+                    selectionEnd
+            ).toLong()
+                .coerceIn(
+                    start + 1L,
+                    info.totalFrames
+                )
+
+        return start to end
+    }
+
+    private fun updateEditButtons(
+        recording: Boolean
+    ) {
+        val info =
+            currentInfo
+
+        val hasFile =
+            info != null &&
+                !recording
+
+        val span =
+            max(
+                0f,
+                selectionEnd -
+                    selectionStart
+            )
+
+        val hasRange =
+            hasFile &&
+                span >
+                MIN_EDIT_SELECTION &&
+                span <
+                MAX_FULL_SELECTION
+
+        playButton.isEnabled =
+            hasFile
+
+        stopPlaybackButton.isEnabled =
+            hasFile
+
+        fitButton.isEnabled =
+            hasFile
+
+        deleteButton.isEnabled =
+            hasRange
+
+        keepButton.isEnabled =
+            hasRange
+
+        val controls =
+            listOf(
+                fitButton,
+                playButton,
+                stopPlaybackButton,
+                deleteButton,
+                keepButton
+            )
+
+        controls.forEach {
+            it.alpha =
+                if (
+                    it.isEnabled
+                ) {
+                    1f
+                } else {
+                    0.42f
+                }
+        }
+    }
+
+    private fun setEditingBusy(
+        busy: Boolean,
+        message: String
+    ) {
+        statusView.text =
+            message
+
+        val enabled =
+            !busy
+
+        openFileButton.isEnabled =
+            enabled
+
+        waveformView.isEnabled =
+            enabled
+
+        if (busy) {
+            playButton.isEnabled = false
+            stopPlaybackButton.isEnabled = false
+            fitButton.isEnabled = false
+            deleteButton.isEnabled = false
+            keepButton.isEnabled = false
+        } else {
+            updateEditButtons(
+                RecorderService.recording
+            )
+        }
+    }
+
+    private fun showMessage(
+        message: String
+    ) {
+        statusView.text =
+            message
+
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun formatDuration(
@@ -555,15 +1274,18 @@ class MainActivity : Activity() {
 
         val minutes =
             (
-                totalSeconds % 3600L
+                totalSeconds %
+                    3600L
                 ) / 60L
 
         val seconds =
-            totalSeconds % 60L
+            totalSeconds %
+                60L
 
         val tenth =
             (
-                elapsedMs % 1000L
+                elapsedMs %
+                    1000L
                 ) / 100L
 
         return "%02d:%02d:%02d.%01d"
@@ -577,8 +1299,10 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
+        permissions:
+            Array<out String>,
+        grantResults:
+            IntArray
     ) {
         super.onRequestPermissionsResult(
             requestCode,
@@ -596,9 +1320,10 @@ class MainActivity : Activity() {
             requestCode ==
             REQUEST_PERMISSIONS
         ) {
-            statusView.text =
+            showMessage(
                 "Нужно разрешение " +
                     "на запись аудио"
+            )
         }
     }
 
@@ -606,8 +1331,20 @@ class MainActivity : Activity() {
         private const val REQUEST_PERMISSIONS =
             100
 
+        private const val REQUEST_OPEN_WAV =
+            4101
+
         private const val UI_UPDATE_MS =
             100L
+
+        private const val WAVEFORM_POINTS =
+            8_000
+
+        private const val MIN_EDIT_SELECTION =
+            0.0005f
+
+        private const val MAX_FULL_SELECTION =
+            0.9995f
 
         private val COLOR_READY =
             Color.rgb(

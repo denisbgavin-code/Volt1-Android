@@ -39,7 +39,6 @@ class RecorderService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopRequested = true
-            runCatching { recorder?.stop() }
             return START_NOT_STICKY
         }
 
@@ -436,7 +435,7 @@ class RecorderService : Service() {
         private const val NOTIFICATION_ID = 1001
 
         private val VOLT_1_NAME =
-            Regex("""\\bvolt\\s*1\\b""", RegexOption.IGNORE_CASE)
+            Regex("""\bvolt\s*1\b""", RegexOption.IGNORE_CASE)
 
         @Volatile
         var recording: Boolean = false

@@ -235,7 +235,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
                         return false
                     }
 
-                    cancelLongPress()
+                    cancelLongPressGesture()
                     gesture =
                         Gesture.NONE
 
@@ -415,7 +415,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
         }
 
     fun showIdle() {
-        cancelLongPress()
+        cancelLongPressGesture()
 
         mode =
             Mode.EMPTY
@@ -447,7 +447,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
     fun showLive(
         values: FloatArray
     ) {
-        cancelLongPress()
+        cancelLongPressGesture()
 
         mode =
             Mode.LIVE
@@ -473,7 +473,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
         resetViewport: Boolean =
             true
     ) {
-        cancelLongPress()
+        cancelLongPressGesture()
 
         mode =
             Mode.EDIT
@@ -1213,7 +1213,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
 
             MotionEvent
                 .ACTION_POINTER_DOWN -> {
-                cancelLongPress()
+                cancelLongPressGesture()
 
                 gesture =
                     Gesture.NONE
@@ -1229,7 +1229,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
                     scaleDetector
                         .isInProgress
                 ) {
-                    cancelLongPress()
+                    cancelLongPressGesture()
                     gesture =
                         Gesture.NONE
 
@@ -1279,7 +1279,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
                         if (
                             pointerMoved
                         ) {
-                            cancelLongPress()
+                            cancelLongPressGesture()
 
                             gesture =
                                 Gesture.PAN
@@ -1319,7 +1319,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
                 ) {
                     Gesture
                         .POSSIBLE_TAP -> {
-                        cancelLongPress()
+                        cancelLongPressGesture()
 
                         if (
                             !pointerMoved
@@ -1340,7 +1340,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
                     }
 
                     else ->
-                        cancelLongPress()
+                        cancelLongPressGesture()
                 }
 
                 gesture =
@@ -1356,7 +1356,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
 
             MotionEvent
                 .ACTION_CANCEL -> {
-                cancelLongPress()
+                cancelLongPressGesture()
 
                 gesture =
                     Gesture.NONE
@@ -1391,7 +1391,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
             )
     }
 
-    private fun cancelLongPress() {
+    private fun cancelLongPressGesture() {
         longPressArmed =
             false
 

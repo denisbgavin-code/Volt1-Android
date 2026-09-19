@@ -35,7 +35,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
-                android:text="v0.4.4"
+                android:text="v0.4.5"
                 android:textColor="#7F8793"
                 android:textSize="10sp" />
         </LinearLayout>
@@ -159,7 +159,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="7dp"
-                android:text="Tap = playhead • hold + drag = select • pinch = zoom • drag = pan"
+                android:text="Tap = seek • hold + drag = select • pinch = zoom • drag = pan"
                 android:textColor="#626A76"
                 android:textSize="9sp" />
         </LinearLayout>
@@ -167,69 +167,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/start"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_marginEnd="4dp"
-                android:layout_weight="1"
-                android:background="@drawable/studio_button_record"
-                android:enabled="false"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:stateListAnimator="@null"
-                android:text="● REC"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/playSelection"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="2dp"
-                android:layout_marginEnd="2dp"
-                android:layout_weight="1"
-                android:background="@drawable/studio_button_accent"
-                android:enabled="false"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:stateListAnimator="@null"
-                android:text="▶ PLAY"
-                android:textAllCaps="false"
-                android:textColor="#0B0D10"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/stop"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="4dp"
-                android:layout_weight="1"
-                android:background="@drawable/studio_button_stop"
-                android:enabled="false"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:stateListAnimator="@null"
-                android:text="■ STOP"
-                android:textAllCaps="false"
-                android:textColor="#0B0D10"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:background="@drawable/studio_card"
             android:orientation="vertical"
             android:padding="9dp">
@@ -357,6 +295,68 @@
                 android:minWidth="0dp"
                 android:stateListAnimator="@null"
                 android:text="SAVE AS…"
+                android:textAllCaps="false"
+                android:textColor="#0B0D10"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/start"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_record"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:stateListAnimator="@null"
+                android:text="● REC"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/playSelection"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_accent"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:stateListAnimator="@null"
+                android:text="▶ PLAY"
+                android:textAllCaps="false"
+                android:textColor="#0B0D10"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/stop"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_stop"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:stateListAnimator="@null"
+                android:text="■ STOP"
                 android:textAllCaps="false"
                 android:textColor="#0B0D10"
                 android:textSize="12sp"

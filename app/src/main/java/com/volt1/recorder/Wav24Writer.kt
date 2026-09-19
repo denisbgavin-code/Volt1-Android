@@ -16,14 +16,20 @@ import java.util.Locale
 class Wav24Writer(
     context: Context,
     private val sampleRate: Int = 48_000,
-    private val channels: Int = 1
+    private val channels: Int = 1,
+    displayNameOverride: String? = null
 ) {
     private val resolver = context.contentResolver
 
     val displayName: String =
-        "Volt1_" +
-            SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date()) +
-            "_24bit_48k.wav"
+        displayNameOverride ?: (
+            "Volt1_" +
+                SimpleDateFormat(
+                    "yyyy-MM-dd_HH-mm-ss",
+                    Locale.US
+                ).format(Date()) +
+                "_24bit_48k.wav"
+            )
 
     private val uri: Uri
     private val descriptor: android.os.ParcelFileDescriptor
@@ -63,8 +69,11 @@ class Wav24Writer(
 
     fun write(source: ByteBuffer, bytes: Int) {
         check(!closed) { "WAV уже закрыт" }
-        require(bytes >= 0 && bytes % FRAME_SIZE_BYTES == 0) {
-            "PCM24 block должен быть кратен 3 байтам"
+        require(
+            bytes >= 0 &&
+                bytes % frameSizeBytes == 0
+        ) {
+            "PCM24 block должен быть кратен frame size"
         }
 
         if (dataBytes + bytes > MAX_PCM_BYTES) {
@@ -118,7 +127,7 @@ class Wav24Writer(
 
     private fun createHeader(pcmBytes: Long): ByteBuffer {
         val bitsPerSample = 24
-        val blockAlign = channels * bitsPerSample / 8
+        val blockAlign = frameSizeBytes
         val byteRate = sampleRate * blockAlign
 
         return ByteBuffer
@@ -148,9 +157,12 @@ class Wav24Writer(
         put(value.toByteArray(Charsets.US_ASCII))
     }
 
+    private val frameSizeBytes: Int
+        get() = channels * 3
+
     companion object {
         private const val WAV_HEADER_BYTES = 44
-        private const val FRAME_SIZE_BYTES = 3
-        private const val MAX_PCM_BYTES = 0xfffffff0L
+        private const val MAX_PCM_BYTES =
+            0xffffffffL - 36L
     }
 }

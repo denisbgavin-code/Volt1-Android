@@ -184,12 +184,45 @@ class MainActivity : Activity() {
                     val finishedName =
                         RecorderService.currentFile
 
-                    if (
-                        finishedName.isNotBlank()
-                    ) {
-                        loadAppRecording(
-                            finishedName
-                        )
+                    val savedUri =
+                        RecorderService.lastSavedUri
+
+                    when {
+                        savedUri.isNotBlank() &&
+                            finishedName.isNotBlank() -> {
+                            player.stop()
+                            playbackActive = false
+                            playbackPosition = 0f
+                            clearEditingSession()
+                            sessionDisplayName =
+                                finishedName
+                            editDirty =
+                                false
+
+                            loadRecording(
+                                uri =
+                                    Uri.parse(
+                                        savedUri
+                                    ),
+                                displayName =
+                                    finishedName
+                            )
+                        }
+
+                        RecorderService.status
+                            .startsWith(
+                                "Запись остановлена"
+                            ) -> {
+                            showMessage(
+                                RecorderService.status
+                            )
+                        }
+
+                        finishedName.isNotBlank() -> {
+                            loadAppRecording(
+                                finishedName
+                            )
+                        }
                     }
                 }
 

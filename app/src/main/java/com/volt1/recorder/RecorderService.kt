@@ -258,12 +258,16 @@ class RecorderService : Service() {
                 }
             }
 
-            recording = false
+            status = "Сохранение WAV…"
+            updateNotification(status)
+
             runCatching { audioRecord.stop() }
 
             writer.closeAndPublish()
             published = true
 
+            lastSavedUri = writer.uri.toString()
+            recording = false
             status = "Сохранено: ${writer.displayName}"
             peakDb = -120f
 
@@ -462,6 +466,7 @@ class RecorderService : Service() {
         peakDb = -120f
         elapsedMs = 0L
         currentFile = ""
+        lastSavedUri = ""
         RecordingWaveformBuffer.reset()
     }
 
@@ -558,6 +563,10 @@ class RecorderService : Service() {
 
         @Volatile
         var currentFile: String = ""
+            private set
+
+        @Volatile
+        var lastSavedUri: String = ""
             private set
     }
 }

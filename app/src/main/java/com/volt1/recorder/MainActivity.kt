@@ -63,6 +63,9 @@ class MainActivity : Activity() {
     private lateinit var openFileButton:
         Button
 
+    private lateinit var takesButton:
+        Button
+
     private lateinit var fitButton:
         Button
 
@@ -382,6 +385,9 @@ class MainActivity : Activity() {
                 openFileButton.isEnabled =
                     !recording
 
+                takesButton.isEnabled =
+                    !recording
+
                 fitButton.isEnabled =
                     !recording &&
                         info != null
@@ -478,6 +484,11 @@ class MainActivity : Activity() {
                 R.id.openFile
             )
 
+        takesButton =
+            findViewById(
+                R.id.takes
+            )
+
         fitButton =
             findViewById(
                 R.id.fitWaveform
@@ -565,6 +576,17 @@ class MainActivity : Activity() {
         openFileButton
             .setOnClickListener {
                 openWavPicker()
+            }
+
+        takesButton
+            .setOnClickListener {
+                startActivityForResult(
+                    Intent(
+                        this,
+                        RecordingsActivity::class.java
+                    ),
+                    REQUEST_TAKES
+                )
             }
 
         fitButton
@@ -980,6 +1002,21 @@ class MainActivity : Activity() {
         )
 
         if (
+            requestCode == REQUEST_TAKES
+        ) {
+            if (
+                resultCode == RESULT_OK &&
+                data != null
+            ) {
+                applyTakesResult(
+                    data
+                )
+            }
+
+            return
+        }
+
+        if (
             resultCode !=
             RESULT_OK
         ) {
@@ -1035,6 +1072,77 @@ class MainActivity : Activity() {
                 )
             }
         }
+    }
+
+    /** Reflects deletes/renames from the takes list and opens a chosen take. */
+    private fun applyTakesResult(
+        data: Intent
+    ) {
+        val info =
+            currentInfo
+
+        val deleted =
+            data.getStringArrayListExtra(
+                RecordingsActivity.EXTRA_DELETED
+            ).orEmpty()
+
+        if (
+            info != null &&
+            info.uri.toString() in deleted
+        ) {
+            player.stop()
+            playbackActive = false
+            playbackPosition = 0f
+            clearEditingSession()
+            currentInfo = null
+            sessionDisplayName = null
+            editDirty = false
+            waveformView.showIdle()
+            updateEditButtons(
+                RecorderService.recording
+            )
+        }
+
+        data.getStringArrayListExtra(
+            RecordingsActivity.EXTRA_RENAMED
+        ).orEmpty().forEach { entry ->
+            val uri =
+                entry.substringBefore('\n')
+
+            val name =
+                entry.substringAfter('\n')
+
+            if (
+                currentInfo?.uri?.toString() == uri &&
+                !editDirty
+            ) {
+                sessionDisplayName =
+                    name
+            }
+        }
+
+        val uri =
+            data.data ?: return
+
+        val displayName =
+            data.getStringExtra(
+                RecordingsActivity.EXTRA_DISPLAY_NAME
+            ) ?: resolveDisplayName(uri)
+
+        player.stop()
+        playbackActive = false
+        playbackPosition = 0f
+        clearEditingSession()
+        sessionDisplayName =
+            displayName
+        editDirty =
+            false
+
+        loadRecording(
+            uri = uri,
+            displayName =
+                displayName
+        )
     }
 
     private fun resolveDisplayName(
@@ -1935,6 +2043,9 @@ class MainActivity : Activity() {
         openFileButton.isEnabled =
             enabled
 
+        takesButton.isEnabled =
+            enabled
+
         waveformView.isEnabled =
             enabled
 
@@ -2013,6 +2124,9 @@ class MainActivity : Activity() {
 
         private const val REQUEST_SAVE_WAV =
             4102
+
+        private const val REQUEST_TAKES =
+            4103
 
         private const val UI_UPDATE_MS =
             100L

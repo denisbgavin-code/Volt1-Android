@@ -278,6 +278,7 @@ class RecorderService : Service() {
                         )
 
                         peakDb = converted.peakDb
+                        meter.onBlock(converted.peakLinear, converted.clippedSamples)
                         RecordingWaveformBuffer.append(
                             converted.peakLinear
                         )
@@ -499,6 +500,7 @@ class RecorderService : Service() {
         currentFile = ""
         lastSavedUri = ""
         RecordingWaveformBuffer.reset()
+        meter.reset()
     }
 
     private fun createNotificationChannel() {
@@ -575,6 +577,9 @@ class RecorderService : Service() {
         @Volatile
         var recording: Boolean = false
             private set
+
+        /** Per-block peaks and clip events for the UI meter. */
+        val meter = LevelMeter.Accumulator()
 
         /** True from capture start until its file is published or discarded. */
         @Volatile

@@ -152,8 +152,9 @@
             <com.volt1.recorder.LevelMeterView
                 android:id="@+id/meter"
                 android:layout_width="match_parent"
-                android:layout_height="10dp"
-                android:layout_marginTop="8dp" />
+                android:layout_height="24dp"
+                android:layout_marginTop="8dp"
+                android:contentDescription="Input level meter, tap to clear clip and max" />
 
             <TextView
                 android:layout_width="match_parent"

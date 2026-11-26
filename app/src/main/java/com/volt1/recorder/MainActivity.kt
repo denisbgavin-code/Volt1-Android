@@ -81,6 +81,9 @@ class MainActivity : Activity() {
     private val player =
         Pcm24Player()
 
+    private val meterBallistics =
+        LevelMeter.Ballistics()
+
     private var detectedVolt:
         AudioDeviceInfo? = null
 
@@ -263,25 +266,8 @@ class MainActivity : Activity() {
                     )
                 )
 
-                val peak =
-                    RecorderService.peakDb
-
-                peakValueView.setTextIfChanged(
-                    if (recording) {
-                        TimeFormat.peakDb(
-                            peak
-                        )
-                    } else {
-                        "— dBFS"
-                    }
-                )
-
-                meterView.setLevelDb(
-                    if (recording) {
-                        peak
-                    } else {
-                        -120f
-                    }
+                updateMeter(
+                    recording
                 )
 
                 when {
@@ -415,7 +401,8 @@ class MainActivity : Activity() {
 
                 handler.postDelayed(
                     this,
-                    UI_UPDATE_MS
+                    // ~30 fps while recording for smooth metering.
+                    if (recording) METER_UPDATE_MS else UI_UPDATE_MS
                 )
             }
         }
@@ -583,6 +570,16 @@ class MainActivity : Activity() {
         fitButton
             .setOnClickListener {
                 waveformView.resetZoom()
+            }
+
+        meterView
+            .setOnClickListener {
+                // Clear the CLIP latch and the take maximum.
+                RecorderService.meter.clearHold()
+                meterBallistics.reset()
+                updateMeter(
+                    RecorderService.recording
+                )
             }
 
         playButton
@@ -1847,6 +1844,57 @@ class MainActivity : Activity() {
         applyEnabledAlpha(saveAsButton)
     }
 
+    private fun updateMeter(
+        recording: Boolean
+    ) {
+        val meter =
+            RecorderService.meter
+
+        val now =
+            android.os.SystemClock.uptimeMillis()
+
+        if (recording) {
+            meterBallistics.update(
+                now,
+                Pcm24.linearToDb(
+                    meter.drainPeak()
+                )
+            )
+        } else {
+            meterBallistics.update(
+                now,
+                Pcm24.SILENCE_DB
+            )
+        }
+
+        val sessionPeak =
+            meter.sessionPeak()
+
+        meterView.setLevels(
+            meterBallistics.barDb,
+            meterBallistics.holdDb,
+            meter.clipEvents()
+        )
+
+        peakValueView.setTextIfChanged(
+            when {
+                recording ->
+                    TimeFormat.meter(
+                        meterBallistics.holdDb,
+                        Pcm24.linearToDb(sessionPeak)
+                    )
+
+                sessionPeak > 0f ->
+                    TimeFormat.maxPeak(
+                        Pcm24.linearToDb(sessionPeak)
+                    )
+
+                else ->
+                    "— dBFS"
+            }
+        )
+    }
+
     private fun applyEnabledAlpha(
         button: Button
     ) {
@@ -1968,6 +2016,9 @@ class MainActivity : Activity() {
 
         private const val UI_UPDATE_MS =
             100L
+
+        private const val METER_UPDATE_MS =
+            33L
 
         private const val WAVEFORM_POINTS =
             8_000

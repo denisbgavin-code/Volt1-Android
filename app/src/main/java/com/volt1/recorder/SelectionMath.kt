@@ -56,6 +56,14 @@ object TimeFormat {
         )
     }
 
+    /** Held peak and take maximum while recording, e.g. "-12.3 · max -3.1". */
+    fun meter(heldDb: Float, maxDb: Float, locale: Locale = Locale.getDefault()): String =
+        String.format(locale, "%5.1f · max %5.1f", heldDb.coerceAtLeast(-99.9f), maxDb.coerceAtLeast(-99.9f))
+
+    /** Take maximum after recording, e.g. "max -3.1 dBFS". */
+    fun maxPeak(maxDb: Float, locale: Locale = Locale.getDefault()): String =
+        String.format(locale, "max %5.1f dBFS", maxDb.coerceAtLeast(-99.9f))
+
     /** Uses the device locale, as before (e.g. "-12,3 dBFS" in ru). */
     fun peakDb(db: Float, locale: Locale = Locale.getDefault()): String =
         String.format(locale, "%6.1f dBFS", db)

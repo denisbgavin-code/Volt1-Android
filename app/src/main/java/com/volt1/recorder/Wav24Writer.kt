@@ -92,6 +92,17 @@ class Wav24Writer(
         dataBytes += bytes
     }
 
+    /**
+     * Makes the audio written so far durable: header with current sizes,
+     * then fsync. Called periodically while recording so a power loss
+     * leaves a valid file (recovered on next start, see RecordingRecovery).
+     */
+    fun checkpoint() {
+        check(!closed) { "WAV уже закрыт" }
+        writeFullyAt(channel, header(dataBytes), 0L)
+        channel.force(false)
+    }
+
     fun closeAndPublish() {
         if (published) return
         if (!closed) finalizeAndClose()

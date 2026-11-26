@@ -94,6 +94,59 @@ object WavHeader {
         writeFullyAt(channel, create(sampleRate, channels, bitsPerSample, pcmBytes), 0L)
     }
 
+    /**
+     * Repairs a file streamed by [Wav24Writer] that was never finalized
+     * (process killed, phone rebooted). Such a file always has our canonical
+     * 44-byte header with the expected format and PCM from byte 44 on.
+     *
+     * Only audio up to the last checkpoint is kept: the checkpoint is
+     * written right after a successful capture-path validation and fsync'd,
+     * so it never covers unvalidated audio or blocks that a power loss may
+     * have left unwritten. The file is truncated to it and finalized.
+     * Returns the recovered PCM byte count (0 = nothing to recover).
+     * Fails closed when the file is not in the expected layout.
+     */
+    fun recoverStreamed(
+        channel: FileChannel,
+        sampleRate: Int,
+        channels: Int,
+        bitsPerSample: Int,
+        writeChannel: FileChannel = channel
+    ): Long {
+        val size = channel.size()
+        if (size < HEADER_BYTES) error("Слишком короткий WAV для восстановления")
+
+        val header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        readFullyAt(channel, header, 0L)
+        header.flip()
+
+        val frameSize = channels * bitsPerSample / 8
+        val expected =
+            matches(header, 0, RIFF) &&
+                matches(header, 8, WAVE) &&
+                matches(header, 12, FMT) &&
+                header.getInt(16) == 16 &&
+                (header.getShort(20).toInt() and 0xffff) == PCM_FORMAT &&
+                (header.getShort(22).toInt() and 0xffff) == channels &&
+                header.getInt(24) == sampleRate &&
+                (header.getShort(32).toInt() and 0xffff) == frameSize &&
+                (header.getShort(34).toInt() and 0xffff) == bitsPerSample &&
+                matches(header, 36, DATA)
+
+        if (!expected || frameSize <= 0) {
+            error("WAV не в формате Volt 1 Recorder; восстановление отменено")
+        }
+
+        val checkpointed = header.getInt(40).toLong() and 0xffffffffL
+        val available = size - HEADER_BYTES
+        val pcmBytes = minOf(checkpointed, available).let { it - it % frameSize }
+
+        writeChannel.truncate(HEADER_BYTES + pcmBytes)
+        finalize(writeChannel, sampleRate, channels, bitsPerSample, pcmBytes)
+        writeChannel.force(true)
+        return pcmBytes
+    }
+
     /** Parses the RIFF chunk list; fails closed on any structural damage. */
     fun parse(channel: FileChannel): WavLayout {
         val fileSize = channel.size()

@@ -37,6 +37,15 @@ class FileWavWriter(
         dataBytes += bytes
     }
 
+    /** Same as Wav24Writer.checkpoint(): header with current sizes + fsync. */
+    fun checkpoint() {
+        writeFullyAt(channel, WavHeader.create(sampleRate, channels, 24, dataBytes), 0L)
+        channel.force(false)
+    }
+
+    /** Simulates the process dying: no finalize, file stays as is. */
+    fun crash() = channel.close()
+
     private fun writeAll(buffer: ByteBuffer) {
         while (buffer.hasRemaining()) channel.write(buffer)
     }

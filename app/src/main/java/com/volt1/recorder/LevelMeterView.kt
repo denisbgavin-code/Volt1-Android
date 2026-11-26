@@ -13,6 +13,8 @@ class LevelMeterView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
+    private val densityScale = resources.displayMetrics.density
+
     private val offPaint = Paint().apply {
         color = Color.rgb(40, 45, 53)
     }
@@ -39,6 +41,7 @@ class LevelMeterView @JvmOverloads constructor(
 
         val segmentCount = 30
         val gap = density(2.5f)
+        val radius = density(1.5f)
 
         val segmentWidth =
             (
@@ -66,14 +69,9 @@ class LevelMeterView @JvmOverloads constructor(
                     i / (segmentCount - 1f)
 
                 onPaint.color = when {
-                    position >= 0.92f ->
-                        Color.rgb(255, 83, 83)
-
-                    position >= 0.78f ->
-                        Color.rgb(238, 190, 72)
-
-                    else ->
-                        Color.rgb(92, 220, 165)
+                    position >= 0.92f -> COLOR_CLIP
+                    position >= 0.78f -> COLOR_HOT
+                    else -> COLOR_OK
                 }
 
                 canvas.drawRoundRect(
@@ -81,8 +79,8 @@ class LevelMeterView @JvmOverloads constructor(
                     0f,
                     right,
                     height.toFloat(),
-                    density(1.5f),
-                    density(1.5f),
+                    radius,
+                    radius,
                     onPaint
                 )
             } else {
@@ -91,8 +89,8 @@ class LevelMeterView @JvmOverloads constructor(
                     0f,
                     right,
                     height.toFloat(),
-                    density(1.5f),
-                    density(1.5f),
+                    radius,
+                    radius,
                     offPaint
                 )
             }
@@ -100,5 +98,11 @@ class LevelMeterView @JvmOverloads constructor(
     }
 
     private fun density(dp: Float): Float =
-        dp * resources.displayMetrics.density
+        dp * densityScale
+
+    private companion object {
+        val COLOR_CLIP = Color.rgb(255, 83, 83)
+        val COLOR_HOT = Color.rgb(238, 190, 72)
+        val COLOR_OK = Color.rgb(92, 220, 165)
+    }
 }

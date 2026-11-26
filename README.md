@@ -41,6 +41,19 @@ APK:
 
     app/build/outputs/apk/debug/app-debug.apk
 
+## Unit tests
+
+PCM24 conversion, RIFF/WAV parsing and writing, cut/crop with de-click
+fades, waveform peaks, selection math and drawing reduction are Android-free
+(`Pcm24`, `WavHeader`, `WavEdit`, `WaveformMath`, `SelectionMath`, ...) and
+covered by JVM tests, including randomized comparisons against independent
+reference implementations:
+
+    gradle testDebugUnitTest
+
+CI runs them on every push. Capture through a real Volt 1 still needs the
+hardware acceptance test below.
+
 ## Use
 
 1. Connect Volt 1 by USB-C/OTG.

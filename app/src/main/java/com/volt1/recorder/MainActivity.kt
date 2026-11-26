@@ -20,9 +20,9 @@ import android.provider.OpenableColumns
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import java.util.ArrayDeque
-import kotlin.math.ceil
-import kotlin.math.floor
 import kotlin.math.max
 
 class MainActivity : Activity() {
@@ -142,6 +142,19 @@ class MainActivity : Activity() {
             }
         }
 
+    /*
+     * Android 16 (API 36) with targetSdk 36 no longer calls onBackPressed()
+     * for back gestures. On API 33+ the platform OnBackInvokedDispatcher is
+     * used instead; the callback is registered only while there is something
+     * for Back to do (stop, stop playback, undo), so otherwise the system
+     * default back (with predictive animation) is kept.
+     */
+    private var backCallback:
+        Any? = null
+
+    private var backCallbackRegistered =
+        false
+
     private val updateUi =
         object : Runnable {
             override fun run() {
@@ -244,22 +257,24 @@ class MainActivity : Activity() {
                             0L
                     }
 
-                recordTimeView.text =
-                    formatDuration(
+                recordTimeView.setTextIfChanged(
+                    TimeFormat.duration(
                         displayTimeMs
                     )
+                )
 
                 val peak =
                     RecorderService.peakDb
 
-                peakValueView.text =
+                peakValueView.setTextIfChanged(
                     if (recording) {
-                        "%6.1f dBFS".format(
+                        TimeFormat.peakDb(
                             peak
                         )
                     } else {
                         "— dBFS"
                     }
+                )
 
                 meterView.setLevelDb(
                     if (recording) {
@@ -271,51 +286,56 @@ class MainActivity : Activity() {
 
                 when {
                     recording -> {
-                        recordStateView.text =
+                        recordStateView.setTextIfChanged(
                             "● REC"
+                        )
 
                         recordStateView
-                            .setTextColor(
+                            .setTextColorIfChanged(
                                 COLOR_RECORDING
                             )
                     }
 
                     playbackActive -> {
-                        recordStateView.text =
+                        recordStateView.setTextIfChanged(
                             "▶ PLAY"
+                        )
 
                         recordStateView
-                            .setTextColor(
+                            .setTextColorIfChanged(
                                 COLOR_READY
                             )
                     }
 
                     info != null -> {
-                        recordStateView.text =
+                        recordStateView.setTextIfChanged(
                             "● EDIT"
+                        )
 
                         recordStateView
-                            .setTextColor(
+                            .setTextColorIfChanged(
                                 COLOR_READY
                             )
                     }
 
                     voltPresent -> {
-                        recordStateView.text =
+                        recordStateView.setTextIfChanged(
                             "● READY"
+                        )
 
                         recordStateView
-                            .setTextColor(
+                            .setTextColorIfChanged(
                                 COLOR_READY
                             )
                     }
 
                     else -> {
-                        recordStateView.text =
+                        recordStateView.setTextIfChanged(
                             "○ OFFLINE"
+                        )
 
                         recordStateView
-                            .setTextColor(
+                            .setTextColorIfChanged(
                                 COLOR_MUTED
                             )
                     }
@@ -324,7 +344,7 @@ class MainActivity : Activity() {
                 val serviceStatus =
                     RecorderService.status
 
-                statusView.text =
+                statusView.setTextIfChanged(
                     if (
                         recording ||
                         serviceStatus.startsWith(
@@ -343,8 +363,9 @@ class MainActivity : Activity() {
                     } else {
                         serviceStatus
                     }
+                )
 
-                fileView.text =
+                fileView.setTextIfChanged(
                     if (info != null) {
                         val base =
                             sessionDisplayName
@@ -362,6 +383,7 @@ class MainActivity : Activity() {
                                 "No file loaded"
                             }
                     }
+                )
 
                 startButton.isEnabled =
                     voltPresent &&
@@ -388,6 +410,8 @@ class MainActivity : Activity() {
 
                 previousRecordingState =
                     recording
+
+                updateBackCallback()
 
                 handler.postDelayed(
                     this,
@@ -613,10 +637,69 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    // Only reached on API 31-32; API 33+ uses OnBackInvokedCallback
+    // (android:enableOnBackInvokedCallback="true", see updateBackCallback).
+    @android.annotation.SuppressLint("GestureBackNavigation")
     @Deprecated(
         "Android back callback compatibility"
     )
     override fun onBackPressed() {
+        if (!handleBack()) {
+            super.onBackPressed()
+        }
+    }
+
+    private fun backHasWork(): Boolean =
+        RecorderService.recording ||
+            playbackActive ||
+            editHistory.isNotEmpty()
+
+    private fun updateBackCallback() {
+        if (
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.TIRAMISU
+        ) {
+            return
+        }
+
+        val wanted =
+            backHasWork()
+
+        if (
+            wanted ==
+            backCallbackRegistered
+        ) {
+            return
+        }
+
+        val callback =
+            (backCallback as? OnBackInvokedCallback)
+                ?: OnBackInvokedCallback {
+                    handleBack()
+                    updateBackCallback()
+                }.also {
+                    backCallback = it
+                }
+
+        if (wanted) {
+            onBackInvokedDispatcher
+                .registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    callback
+                )
+        } else {
+            onBackInvokedDispatcher
+                .unregisterOnBackInvokedCallback(
+                    callback
+                )
+        }
+
+        backCallbackRegistered =
+            wanted
+    }
+
+    /** Returns true when Back was consumed. */
+    private fun handleBack(): Boolean {
         if (
             RecorderService.recording
         ) {
@@ -630,7 +713,7 @@ class MainActivity : Activity() {
                 }
             )
 
-            return
+            return true
         }
 
         if (
@@ -641,21 +724,27 @@ class MainActivity : Activity() {
             playbackActive =
                 false
 
-            return
+            return true
         }
 
-        if (
-            undoLastEdit()
-        ) {
-            return
-        }
-
-        super.onBackPressed()
+        return undoLastEdit()
     }
 
     override fun onDestroy() {
         player.stop()
         clearEditingSession()
+
+        if (
+            backCallbackRegistered &&
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.TIRAMISU
+        ) {
+            (backCallback as? OnBackInvokedCallback)?.let {
+                onBackInvokedDispatcher
+                    .unregisterOnBackInvokedCallback(it)
+            }
+            backCallbackRegistered = false
+        }
 
         audioManager
             .unregisterAudioDeviceCallback(
@@ -711,11 +800,9 @@ class MainActivity : Activity() {
                         .TYPE_USB_HEADSET
             }
             .firstOrNull {
-                VOLT_1_NAME
-                    .containsMatchIn(
-                        it.productName
-                            .toString()
-                    )
+                Volt1Device.isVolt1Name(
+                    it.productName
+                )
             }
     }
 
@@ -741,9 +828,9 @@ class MainActivity : Activity() {
         }
 
         val supports48k =
-            volt.sampleRates.isEmpty() ||
-                48_000 in
+            Volt1Device.supports48k(
                 volt.sampleRates
+            )
 
         deviceStatusView.text =
             if (supports48k) {
@@ -777,9 +864,9 @@ class MainActivity : Activity() {
         }
 
         if (
-            volt.sampleRates.isNotEmpty() &&
-            48_000 !in
-            volt.sampleRates
+            !Volt1Device.supports48k(
+                volt.sampleRates
+            )
         ) {
             showMessage(
                 "Volt 1/Android " +
@@ -866,20 +953,17 @@ class MainActivity : Activity() {
             requestCode
         ) {
             REQUEST_OPEN_WAV -> {
-                val takeFlags =
+                if (
                     data.flags and
-                        (
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                            )
-
-                runCatching {
-                    contentResolver
-                        .takePersistableUriPermission(
-                            uri,
-                            takeFlags and
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION != 0
+                ) {
+                    runCatching {
+                        contentResolver
+                            .takePersistableUriPermission(
+                                uri,
                                 Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
+                            )
+                    }
                 }
 
                 player.stop()
@@ -1175,15 +1259,10 @@ class MainActivity : Activity() {
             )
 
         val cursorFrame =
-            floor(
-                info.totalFrames *
-                    playbackPosition
+            SelectionMath.cursorFrame(
+                info.totalFrames,
+                playbackPosition
             )
-                .toLong()
-                .coerceIn(
-                    0L,
-                    info.totalFrames - 1L
-                )
 
         val selectionIsPartial =
             selectionEnd -
@@ -1290,6 +1369,11 @@ class MainActivity : Activity() {
             "Deleting range…"
         )
 
+        val previousState =
+            captureEditState(
+                info
+            )
+
         Thread {
             try {
                 val newUri =
@@ -1302,19 +1386,10 @@ class MainActivity : Activity() {
                             frames.second
                     )
 
-                val previousState =
-                    captureEditState(
-                        info
-                    )
-
                 runOnUiThread {
-                    if (
-                        previousState != null
-                    ) {
-                        editHistory.addLast(
-                            previousState
-                        )
-                    }
+                    editHistory.addLast(
+                        previousState
+                    )
 
                     ownedWorkingUris.add(
                         newUri
@@ -1393,6 +1468,11 @@ class MainActivity : Activity() {
             "Cropping working edit…"
         )
 
+        val previousState =
+            captureEditState(
+                info
+            )
+
         Thread {
             try {
                 val newName =
@@ -1405,19 +1485,10 @@ class MainActivity : Activity() {
                             frames.second
                     )
 
-                val previousState =
-                    captureEditState(
-                        info
-                    )
-
                 runOnUiThread {
-                    if (
-                        previousState != null
-                    ) {
-                        editHistory.addLast(
-                            previousState
-                        )
-                    }
+                    editHistory.addLast(
+                        previousState
+                    )
 
                     ownedWorkingUris.add(
                         newName
@@ -1532,13 +1603,13 @@ class MainActivity : Activity() {
                         destinationUri
                     )
 
-                editDirty =
-                    false
-
-                sessionDisplayName =
-                    savedName
-
                 runOnUiThread {
+                    editDirty =
+                        false
+
+                    sessionDisplayName =
+                        savedName
+
                     setEditingBusy(
                         false,
                         "Saved: $savedName"
@@ -1680,29 +1751,12 @@ class MainActivity : Activity() {
 
     private fun selectedFrames(
         info: WavInfo
-    ): Pair<Long, Long> {
-        val start =
-            floor(
-                info.totalFrames *
-                    selectionStart
-            ).toLong()
-                .coerceIn(
-                    0L,
-                    info.totalFrames - 1L
-                )
-
-        val end =
-            ceil(
-                info.totalFrames *
-                    selectionEnd
-            ).toLong()
-                .coerceIn(
-                    start + 1L,
-                    info.totalFrames
-                )
-
-        return start to end
-    }
+    ): Pair<Long, Long> =
+        SelectionMath.selectedFrames(
+            info.totalFrames,
+            selectionStart,
+            selectionEnd
+        )
 
     private fun updateEditButtons(
         recording: Boolean
@@ -1743,24 +1797,37 @@ class MainActivity : Activity() {
         saveAsButton.isEnabled =
             hasFile
 
-        val controls =
-            listOf(
-                fitButton,
-                playButton,
-                deleteButton,
-                cropButton,
-                saveAsButton
-            )
+        applyEnabledAlpha(fitButton)
+        applyEnabledAlpha(playButton)
+        applyEnabledAlpha(deleteButton)
+        applyEnabledAlpha(cropButton)
+        applyEnabledAlpha(saveAsButton)
+    }
 
-        controls.forEach {
-            it.alpha =
-                if (
-                    it.isEnabled
-                ) {
-                    1f
-                } else {
-                    0.42f
-                }
+    private fun applyEnabledAlpha(
+        button: Button
+    ) {
+        val alpha =
+            if (button.isEnabled) 1f else 0.42f
+
+        if (button.alpha != alpha) {
+            button.alpha = alpha
+        }
+    }
+
+    private fun TextView.setTextIfChanged(
+        value: CharSequence
+    ) {
+        if (!android.text.TextUtils.equals(text, value)) {
+            text = value
+        }
+    }
+
+    private fun TextView.setTextColorIfChanged(
+        color: Int
+    ) {
+        if (currentTextColor != color) {
+            setTextColor(color)
         }
     }
 
@@ -1804,40 +1871,6 @@ class MainActivity : Activity() {
             message,
             Toast.LENGTH_SHORT
         ).show()
-    }
-
-    private fun formatDuration(
-        elapsedMs: Long
-    ): String {
-        val totalSeconds =
-            elapsedMs / 1000L
-
-        val hours =
-            totalSeconds / 3600L
-
-        val minutes =
-            (
-                totalSeconds %
-                    3600L
-                ) / 60L
-
-        val seconds =
-            totalSeconds %
-                60L
-
-        val tenth =
-            (
-                elapsedMs %
-                    1000L
-                ) / 100L
-
-        return "%02d:%02d:%02d.%01d"
-            .format(
-                hours,
-                minutes,
-                seconds,
-                tenth
-            )
     }
 
     override fun onRequestPermissionsResult(
@@ -1921,12 +1954,6 @@ class MainActivity : Activity() {
                 127,
                 135,
                 147
-            )
-
-        private val VOLT_1_NAME =
-            Regex(
-                """\bvolt\s*1\b""",
-                RegexOption.IGNORE_CASE
             )
     }
 }

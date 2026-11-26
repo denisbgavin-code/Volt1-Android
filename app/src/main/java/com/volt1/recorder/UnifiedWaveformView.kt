@@ -12,7 +12,6 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewConfiguration
 import kotlin.math.abs
-import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
@@ -35,6 +34,14 @@ class UnifiedWaveformView @JvmOverloads constructor(
         PAN,
         RANGE_CREATE
     }
+
+    // Declared first: the Paint initializers below use density().
+    private val densityScale =
+        resources.displayMetrics.density
+
+    private var activeColumns = FloatArray(0)
+    private var inactiveColumns = FloatArray(0)
+    private var lineBuffer = FloatArray(0)
 
     private val backgroundPaint =
         Paint().apply {
@@ -747,170 +754,63 @@ class UnifiedWaveformView @JvmOverloads constructor(
         contentHeight: Float,
         centerY: Float
     ) {
-        if (
-            peaks.isEmpty()
-        ) {
+        if (peaks.isEmpty()) return
+
+        val halfHeight = contentHeight * 0.40f
+        val minAmplitude = density(0.7f)
+        val needed = kotlin.math.ceil(width).toInt()
+
+        if (activeColumns.size < needed) {
+            activeColumns = FloatArray(needed)
+            inactiveColumns = FloatArray(needed)
+            lineBuffer = FloatArray(needed * 4)
+        }
+
+        if (mode != Mode.EDIT) {
+            val columns = WaveformMath.liveColumns(peaks, width, activeColumns)
+            drawColumns(canvas, activeColumns, columns, centerY, halfHeight, minAmplitude, waveformPaint)
             return
         }
 
-        val halfHeight =
-            contentHeight *
-                0.40f
+        val columns = WaveformMath.editColumns(
+            peaks = peaks,
+            visibleStart = visibleStart,
+            visibleEnd = visibleEnd,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd,
+            width = width,
+            active = activeColumns,
+            inactive = inactiveColumns
+        )
 
-        if (
-            mode !=
-            Mode.EDIT
-        ) {
-            val step =
-                if (
-                    peaks.size <=
-                    1
-                ) {
-                    width
-                } else {
-                    width /
-                        max(
-                            1,
-                            peaks.size -
-                                1
-                        )
-                }
+        drawColumns(canvas, inactiveColumns, columns, centerY, halfHeight, minAmplitude, inactiveWaveformPaint)
+        drawColumns(canvas, activeColumns, columns, centerY, halfHeight, minAmplitude, waveformPaint)
+    }
 
-            peaks.forEachIndexed {
-                    index,
-                    peak ->
+    /** One batched drawLines() call for all non-empty columns. */
+    private fun drawColumns(
+        canvas: Canvas,
+        values: FloatArray,
+        columns: Int,
+        centerY: Float,
+        halfHeight: Float,
+        minAmplitude: Float,
+        paint: Paint
+    ) {
+        var count = 0
+        for (column in 0 until columns) {
+            val value = values[column]
+            if (value < 0f) continue
 
-                val x =
-                    if (
-                        peaks.size ==
-                        1
-                    ) {
-                        width
-                    } else {
-                        index *
-                            step
-                    }
-
-                val amplitude =
-                    max(
-                        density(
-                            0.7f
-                        ),
-                        peak
-                            .coerceIn(
-                                0f,
-                                1f
-                            ) *
-                            halfHeight
-                    )
-
-                canvas.drawLine(
-                    x,
-                    centerY -
-                        amplitude,
-                    x,
-                    centerY +
-                        amplitude,
-                    waveformPaint
-                )
-            }
-
-            return
+            val amplitude = max(minAmplitude, value * halfHeight)
+            val x = column + 0.5f
+            lineBuffer[count] = x
+            lineBuffer[count + 1] = centerY - amplitude
+            lineBuffer[count + 2] = x
+            lineBuffer[count + 3] = centerY + amplitude
+            count += 4
         }
-
-        val lastIndex =
-            peaks.lastIndex
-
-        if (
-            lastIndex <=
-            0
-        ) {
-            return
-        }
-
-        val first =
-            floor(
-                visibleStart *
-                    lastIndex
-            )
-                .toInt()
-                .coerceIn(
-                    0,
-                    lastIndex
-                )
-
-        val last =
-            (
-                visibleEnd *
-                    lastIndex
-                )
-                .toInt()
-                .coerceIn(
-                    first,
-                    lastIndex
-                )
-
-        val count =
-            max(
-                1,
-                last -
-                    first +
-                    1
-            )
-
-        for (
-            i in
-            0 until count
-        ) {
-            val index =
-                first +
-                    i
-
-            val timelineFraction =
-                index /
-                    lastIndex
-                        .toFloat()
-
-            val x =
-                timelineToX(
-                    timelineFraction
-                )
-
-            val amplitude =
-                max(
-                    density(
-                        0.7f
-                    ),
-                    peaks[index]
-                        .coerceIn(
-                            0f,
-                            1f
-                        ) *
-                        halfHeight
-                )
-
-            val paint =
-                if (
-                    timelineFraction >=
-                    selectionStart &&
-                    timelineFraction <=
-                    selectionEnd
-                ) {
-                    waveformPaint
-                } else {
-                    inactiveWaveformPaint
-                }
-
-            canvas.drawLine(
-                x,
-                centerY -
-                    amplitude,
-                x,
-                centerY +
-                    amplitude,
-                paint
-            )
-        }
+        if (count > 0) canvas.drawLines(lineBuffer, 0, count, paint)
     }
 
     private fun drawSelection(
@@ -1668,10 +1568,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
     private fun density(
         dp: Float
     ): Float =
-        dp *
-            resources
-                .displayMetrics
-                .density
+        dp * densityScale
 
     companion object {
         private const val MIN_VISIBLE_SPAN =

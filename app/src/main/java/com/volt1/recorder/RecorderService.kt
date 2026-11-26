@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.Manifest
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -18,8 +20,6 @@ import android.os.IBinder
 import android.os.SystemClock
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.abs
-import kotlin.math.log10
 import kotlin.math.max
 
 class RecorderService : Service() {
@@ -43,17 +43,29 @@ class RecorderService : Service() {
             return START_NOT_STICKY
         }
 
-        if (intent?.action != ACTION_START || worker?.isAlive == true) {
+        if (intent?.action != ACTION_START) {
+            return START_NOT_STICKY
+        }
+
+        val alreadyRunning = worker?.isAlive == true
+
+        /*
+         * Every startForegroundService() must be answered by startForeground(),
+         * also when a capture is already running (e.g. a double tap on Start
+         * during validation); otherwise Android raises
+         * ForegroundServiceDidNotStartInTimeException.
+         */
+        startForeground(
+            NOTIFICATION_ID,
+            createNotification(if (alreadyRunning) status else "Проверка Volt 1…"),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        )
+
+        if (alreadyRunning) {
             return START_NOT_STICKY
         }
 
         val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
-
-        startForeground(
-            NOTIFICATION_ID,
-            createNotification("Проверка Volt 1…"),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-        )
 
         stopRequested = false
 
@@ -85,6 +97,13 @@ class RecorderService : Service() {
                 ?: error("Volt 1 отключён")
 
             requireVolt1(device)
+
+            if (
+                checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                error("Нет разрешения на запись аудио")
+            }
 
             /*
              * Volt 1 advertises two USB input channels on the tested phone,
@@ -196,11 +215,13 @@ class RecorderService : Service() {
                 SAMPLE_RATE * sourceFrameSizeBytes / 10
             ).order(ByteOrder.nativeOrder())
 
-            val wavBuffer = ByteBuffer.allocateDirect(
+            val wavBytes = ByteArray(
                 SAMPLE_RATE * OUTPUT_FRAME_SIZE_BYTES / 10
             )
+            val wavBuffer = ByteBuffer.wrap(wavBytes)
+            val converted = Pcm24.ConvertedBlock()
 
-            val startedAt = SystemClock.elapsedRealtime()
+            var framesWritten = 0L
             var blocksSinceValidation = 0
 
             while (!stopRequested) {
@@ -221,11 +242,12 @@ class RecorderService : Service() {
                             )
                         }
 
-                        val converted = convertChannel0Pcm32ToPcm24(
+                        Pcm24.convertChannel0Pcm32ToPcm24(
                             source = applicationBuffer,
                             sourceBytes = count,
                             sourceFrameSizeBytes = sourceFrameSizeBytes,
-                            destination = wavBuffer
+                            destination = wavBytes,
+                            result = converted
                         )
 
                         peakDb = converted.peakDb
@@ -233,7 +255,10 @@ class RecorderService : Service() {
                             converted.peakLinear
                         )
                         writer.write(wavBuffer, converted.bytes)
-                        elapsedMs = SystemClock.elapsedRealtime() - startedAt
+
+                        // Duration of audio actually in the file, not wall time.
+                        framesWritten += count / sourceFrameSizeBytes
+                        elapsedMs = framesWritten * 1000L / SAMPLE_RATE
 
                         blocksSinceValidation++
                         if (blocksSinceValidation >= 10) {
@@ -381,7 +406,7 @@ class RecorderService : Service() {
             error("Выбранное устройство не USB Audio")
         }
 
-        if (!VOLT_1_NAME.containsMatchIn(device.productName.toString())) {
+        if (!Volt1Device.isVolt1Name(device.productName)) {
             error("USB-устройство не распознано как UA Volt 1")
         }
 
@@ -395,69 +420,6 @@ class RecorderService : Service() {
         AudioFormat.ENCODING_PCM_32BIT,
         AudioFormat.ENCODING_PCM_FLOAT -> true
         else -> false
-    }
-
-    private data class ConvertedBlock(
-        val bytes: Int,
-        val peakDb: Float,
-        val peakLinear: Float
-    )
-
-    private fun convertChannel0Pcm32ToPcm24(
-        source: ByteBuffer,
-        sourceBytes: Int,
-        sourceFrameSizeBytes: Int,
-        destination: ByteBuffer
-    ): ConvertedBlock {
-        val frameCount = sourceBytes / sourceFrameSizeBytes
-        val outputBytes = frameCount * OUTPUT_FRAME_SIZE_BYTES
-
-        if (destination.capacity() < outputBytes) {
-            error("Недостаточный PCM24 output buffer")
-        }
-
-        destination.clear()
-        var peak = 0L
-        var sourceOffset = 0
-
-        repeat(frameCount) {
-            /*
-             * PCM32 is signed Q.31. Arithmetic shift by 8 produces signed Q.23.
-             * Only channel index 0 is copied; all other client channels are
-             * deliberately ignored.
-             */
-            val q31 = source.getInt(sourceOffset)
-            val q23 = q31 shr 8
-
-            destination.put((q23 and 0xff).toByte())
-            destination.put(((q23 ushr 8) and 0xff).toByte())
-            destination.put(((q23 ushr 16) and 0xff).toByte())
-
-            peak = max(peak, abs(q23.toLong()))
-            sourceOffset += sourceFrameSizeBytes
-        }
-
-        val linear = if (peak == 0L) {
-            0f
-        } else {
-            (peak.toDouble() / PCM24_MAX)
-                .toFloat()
-                .coerceIn(0f, 1f)
-        }
-
-        val db = if (linear <= 0f) {
-            -120f
-        } else {
-            (20.0 * log10(linear.toDouble()))
-                .toFloat()
-                .coerceAtLeast(-120f)
-        }
-
-        return ConvertedBlock(
-            bytes = outputBytes,
-            peakDb = db,
-            peakLinear = linear
-        )
     }
 
     private fun resetPublicState() {
@@ -536,14 +498,10 @@ class RecorderService : Service() {
         private const val BUFFER_CHANNEL_HEADROOM = 4
 
         private const val OUTPUT_CHANNELS = 1
-        private const val OUTPUT_FRAME_SIZE_BYTES = 3
-        private const val PCM24_MAX = 8_388_607.0
+        private const val OUTPUT_FRAME_SIZE_BYTES = Pcm24.BYTES_PER_SAMPLE
 
         private const val NOTIFICATION_CHANNEL = "volt1_recording"
         private const val NOTIFICATION_ID = 1001
-
-        private val VOLT_1_NAME =
-            Regex("""\bvolt\s*1\b""", RegexOption.IGNORE_CASE)
 
         @Volatile
         var recording: Boolean = false

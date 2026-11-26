@@ -32,10 +32,20 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests.all {
+            it.maxHeapSize = "1g"
+        }
+    }
+
 }
 
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
 }

@@ -4,40 +4,48 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Streams PCM24 into a pending MediaStore WAV. The header is rewritten with
+ * the final sizes on close; until [closeAndPublish] succeeds the entry stays
+ * IS_PENDING and [abort] deletes it.
+ */
 class Wav24Writer(
     context: Context,
     private val sampleRate: Int = 48_000,
     private val channels: Int = 1,
     displayNameOverride: String? = null
-) {
+) : PcmSink {
+
     private val resolver = context.contentResolver
 
     val displayName: String =
         displayNameOverride ?: (
             "Volt1_" +
-                SimpleDateFormat(
-                    "yyyy-MM-dd_HH-mm-ss",
-                    Locale.US
-                ).format(Date()) +
+                SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date()) +
                 "_24bit_48k.wav"
             )
 
     val uri: Uri
-    private val descriptor: android.os.ParcelFileDescriptor
+    private val descriptor: ParcelFileDescriptor
     private val output: FileOutputStream
     private val channel: FileChannel
 
-    private var dataBytes = 0L
+    private val frameSizeBytes = channels * Pcm24.BYTES_PER_SAMPLE
+
+    var dataBytes = 0L
+        private set
+
     private var closed = false
+    private var published = false
 
     init {
         val values = ContentValues().apply {
@@ -50,55 +58,53 @@ class Wav24Writer(
             put(MediaStore.Audio.Media.IS_PENDING, 1)
         }
 
-        uri = resolver.insert(
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-            values
-        ) ?: error("Не удалось создать запись MediaStore")
+        uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
+            ?: error("Не удалось создать запись MediaStore")
 
+        var openedDescriptor: ParcelFileDescriptor? = null
         try {
-            descriptor = resolver.openFileDescriptor(uri, "rw")
+            openedDescriptor = resolver.openFileDescriptor(uri, "rw")
                 ?: error("Не удалось открыть WAV")
-            output = FileOutputStream(descriptor.fileDescriptor)
+            descriptor = openedDescriptor
+            output = FileOutputStream(openedDescriptor.fileDescriptor)
             channel = output.channel
-            writeFully(createHeader(0L))
+            writeFully(header(0L))
         } catch (t: Throwable) {
-            resolver.delete(uri, null, null)
+            runCatching { openedDescriptor?.close() }
+            runCatching { resolver.delete(uri, null, null) }
             throw t
         }
     }
 
-    fun write(source: ByteBuffer, bytes: Int) {
+    override fun write(source: ByteBuffer, bytes: Int) {
         check(!closed) { "WAV уже закрыт" }
-        require(
-            bytes >= 0 &&
-                bytes % frameSizeBytes == 0
-        ) {
+        require(bytes >= 0 && bytes % frameSizeBytes == 0) {
             "PCM24 block должен быть кратен frame size"
         }
 
-        if (dataBytes + bytes > MAX_PCM_BYTES) {
+        if (dataBytes + bytes > WavHeader.MAX_PCM_BYTES) {
             error("Достигнут предел стандартного RIFF/WAV (~4 GiB)")
         }
 
-        source.position(0)
         source.limit(bytes)
+        source.position(0)
         writeFully(source)
         dataBytes += bytes
     }
 
     fun closeAndPublish() {
-        if (closed) return
+        if (published) return
+        if (!closed) finalizeAndClose()
 
-        finalizeAndClose()
-
-        resolver.update(
+        val updated = resolver.update(
             uri,
-            ContentValues().apply {
-                put(MediaStore.Audio.Media.IS_PENDING, 0)
-            },
+            ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) },
             null,
             null
         )
+
+        if (updated <= 0) error("MediaStore не опубликовал WAV")
+        published = true
     }
 
     fun closeKeepingPending() {
@@ -107,8 +113,7 @@ class Wav24Writer(
     }
 
     private fun finalizeAndClose() {
-        channel.position(0L)
-        writeFully(createHeader(dataBytes))
+        WavHeader.finalize(channel, sampleRate, channels, 24, dataBytes)
         channel.force(true)
 
         channel.close()
@@ -118,14 +123,18 @@ class Wav24Writer(
         closed = true
     }
 
+    /**
+     * Deletes an incomplete file. A file whose header was already finalized
+     * is complete audio and is never deleted here.
+     */
     fun abort() {
         if (closed) return
 
         runCatching { channel.close() }
         runCatching { output.close() }
         runCatching { descriptor.close() }
-        resolver.delete(uri, null, null)
         closed = true
+        resolver.delete(uri, null, null)
     }
 
     private fun writeFully(buffer: ByteBuffer) {
@@ -134,44 +143,11 @@ class Wav24Writer(
         }
     }
 
-    private fun createHeader(pcmBytes: Long): ByteBuffer {
-        val bitsPerSample = 24
-        val blockAlign = frameSizeBytes
-        val byteRate = sampleRate * blockAlign
-
-        return ByteBuffer
-            .allocate(WAV_HEADER_BYTES)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .apply {
-                putAscii("RIFF")
-                putInt((36L + pcmBytes).toInt())
-                putAscii("WAVE")
-
-                putAscii("fmt ")
-                putInt(16)
-                putShort(1)
-                putShort(channels.toShort())
-                putInt(sampleRate)
-                putInt(byteRate)
-                putShort(blockAlign.toShort())
-                putShort(bitsPerSample.toShort())
-
-                putAscii("data")
-                putInt(pcmBytes.toInt())
-                flip()
-            }
-    }
-
-    private fun ByteBuffer.putAscii(value: String) {
-        put(value.toByteArray(Charsets.US_ASCII))
-    }
-
-    private val frameSizeBytes: Int
-        get() = channels * 3
-
-    companion object {
-        private const val WAV_HEADER_BYTES = 44
-        private const val MAX_PCM_BYTES =
-            0xffffffffL - 36L
-    }
+    private fun header(pcmBytes: Long): ByteBuffer =
+        WavHeader.create(
+            sampleRate = sampleRate,
+            channels = channels,
+            bitsPerSample = 24,
+            pcmBytes = pcmBytes
+        )
 }

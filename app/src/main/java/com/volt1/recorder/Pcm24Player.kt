@@ -11,16 +11,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Bit-exact PCM24 playback of a frame range. Each play() runs on its own
+ * worker thread that owns its own AudioTrack; stop() only signals and
+ * interrupts the current one, so a finishing worker can never release the
+ * track of the playback that replaced it.
+ */
 class Pcm24Player {
 
-    private var worker:
-        Thread? = null
+    private var stopFlag = AtomicBoolean(true)
 
-    private var stopFlag =
-        AtomicBoolean(false)
-
-    private var audioTrack:
-        AudioTrack? = null
+    // Guarded by this: the track of the current (latest) playback only.
+    private var activeTrack: AudioTrack? = null
 
     @Synchronized
     fun play(
@@ -33,408 +35,269 @@ class Pcm24Player {
     ) {
         stop()
 
-        val localStop =
-            AtomicBoolean(false)
+        val localStop = AtomicBoolean(false)
+        stopFlag = localStop
 
-        stopFlag =
-            localStop
-
-        worker =
-            Thread {
-                var errorMessage:
-                    String? = null
+        Thread(
+            {
+                var track: AudioTrack? = null
+                var errorMessage: String? = null
 
                 try {
-                    WavFile.validateEditable(
-                        info
+                    track = createTrack(info)
+                    if (!publishTrack(localStop, track)) return@Thread
+
+                    playRange(
+                        context = context,
+                        info = info,
+                        track = track,
+                        startFrame = startFrame,
+                        endFrameExclusive = endFrameExclusive,
+                        stop = localStop,
+                        onProgress = onProgress
                     )
-
-                    val minBuffer =
-                        AudioTrack.getMinBufferSize(
-                            info.sampleRate,
-                            AudioFormat.CHANNEL_OUT_MONO,
-                            AudioFormat
-                                .ENCODING_PCM_24BIT_PACKED
-                        )
-
-                    if (minBuffer <= 0) {
-                        error(
-                            "Android не поддерживает " +
-                                "PCM24 playback"
-                        )
-                    }
-
-                    val bufferSize =
-                        alignUp(
-                            max(
-                                minBuffer * 2,
-                                48 * 1024
-                            ),
-                            info.frameSizeBytes
-                        )
-
-                    val track =
-                        AudioTrack.Builder()
-                            .setAudioAttributes(
-                                AudioAttributes.Builder()
-                                    .setUsage(
-                                        AudioAttributes
-                                            .USAGE_MEDIA
-                                    )
-                                    .setContentType(
-                                        AudioAttributes
-                                            .CONTENT_TYPE_MUSIC
-                                    )
-                                    .build()
-                            )
-                            .setAudioFormat(
-                                AudioFormat.Builder()
-                                    .setEncoding(
-                                        AudioFormat
-                                            .ENCODING_PCM_24BIT_PACKED
-                                    )
-                                    .setSampleRate(
-                                        info.sampleRate
-                                    )
-                                    .setChannelMask(
-                                        AudioFormat
-                                            .CHANNEL_OUT_MONO
-                                    )
-                                    .build()
-                            )
-                            .setBufferSizeInBytes(
-                                bufferSize
-                            )
-                            .setTransferMode(
-                                AudioTrack.MODE_STREAM
-                            )
-                            .build()
-
-                    audioTrack =
-                        track
-
-                    if (
-                        track.state !=
-                        AudioTrack.STATE_INITIALIZED
-                    ) {
-                        error(
-                            "AudioTrack " +
-                                "не инициализирован"
-                        )
-                    }
-
-                    val safeStart =
-                        startFrame.coerceIn(
-                            0L,
-                            info.totalFrames - 1L
-                        )
-
-                    val safeEnd =
-                        endFrameExclusive.coerceIn(
-                            safeStart + 1L,
-                            info.totalFrames
-                        )
-
-                    val selectionFrames =
-                        safeEnd - safeStart
-
-                    var remaining =
-                        selectionFrames *
-                            info.frameSizeBytes
-
-                    val pfd =
-                        context.contentResolver
-                            .openFileDescriptor(
-                                info.uri,
-                                "r"
-                            )
-                            ?: error(
-                                "Не удалось открыть WAV"
-                            )
-
-                    pfd.use { descriptor ->
-                        FileInputStream(
-                            descriptor.fileDescriptor
-                        ).use { input ->
-                            val channel =
-                                input.channel
-
-                            channel.position(
-                                info.dataOffset +
-                                    safeStart *
-                                    info.frameSizeBytes
-                            )
-
-                            val buffer =
-                                ByteBuffer.allocateDirect(
-                                    bufferSize
-                                )
-
-                            onProgress(
-                                safeStart.toFloat() /
-                                    info.totalFrames.toFloat()
-                            )
-
-                            track.play()
-
-                            while (
-                                remaining > 0L &&
-                                !localStop.get()
-                            ) {
-                                buffer.clear()
-
-                                val requested =
-                                    min(
-                                        buffer.capacity()
-                                            .toLong(),
-                                        remaining
-                                    ).toInt()
-
-                                buffer.limit(
-                                    requested
-                                )
-
-                                var readTotal =
-                                    0
-
-                                while (
-                                    readTotal <
-                                    requested &&
-                                    !localStop.get()
-                                ) {
-                                    val read =
-                                        channel.read(
-                                            buffer
-                                        )
-
-                                    if (
-                                        read < 0
-                                    ) {
-                                        error(
-                                            "Неожиданный конец " +
-                                                "WAV при playback"
-                                        )
-                                    }
-
-                                    readTotal +=
-                                        read
-                                }
-
-                                if (
-                                    localStop.get()
-                                ) {
-                                    break
-                                }
-
-                                buffer.flip()
-
-                                while (
-                                    buffer.hasRemaining() &&
-                                    !localStop.get()
-                                ) {
-                                    val written =
-                                        track.write(
-                                            buffer,
-                                            buffer.remaining(),
-                                            AudioTrack.WRITE_BLOCKING
-                                        )
-
-                                    if (
-                                        written < 0
-                                    ) {
-                                        error(
-                                            "AudioTrack.write(): " +
-                                                written
-                                        )
-                                    }
-
-                                    reportProgress(
-                                        track = track,
-                                        safeStart = safeStart,
-                                        selectionFrames =
-                                            selectionFrames,
-                                        totalFrames =
-                                            info.totalFrames,
-                                        onProgress =
-                                            onProgress
-                                    )
-                                }
-
-                                remaining -=
-                                    readTotal
-                            }
-
-                            while (
-                                !localStop.get()
-                            ) {
-                                val played =
-                                    playbackHeadFrames(
-                                        track
-                                    )
-                                        .coerceAtMost(
-                                            selectionFrames
-                                        )
-
-                                reportProgress(
-                                    track = track,
-                                    safeStart = safeStart,
-                                    selectionFrames =
-                                        selectionFrames,
-                                    totalFrames =
-                                        info.totalFrames,
-                                    onProgress =
-                                        onProgress
-                                )
-
-                                if (
-                                    played >=
-                                    selectionFrames
-                                ) {
-                                    break
-                                }
-
-                                SystemClock.sleep(
-                                    PROGRESS_POLL_MS
-                                )
-                            }
-                        }
-                    }
-
-                } catch (
-                    t: Throwable
-                ) {
-                    errorMessage =
-                        t.message
-                            ?: t.javaClass
-                                .simpleName
-
+                } catch (t: Throwable) {
+                    errorMessage = t.message ?: t.javaClass.simpleName
                 } finally {
-                    val track =
-                        audioTrack
-
-                    audioTrack =
-                        null
-
-                    runCatching {
-                        if (
-                            track?.playState ==
-                            AudioTrack
-                                .PLAYSTATE_PLAYING
-                        ) {
-                            track.stop()
+                    if (track != null) {
+                        clearTrack(track)
+                        runCatching {
+                            if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                                track.stop()
+                            }
                         }
+                        runCatching { track.flush() }
+                        runCatching { track.release() }
                     }
 
-                    runCatching {
-                        track?.flush()
-                    }
-
-                    runCatching {
-                        track?.release()
-                    }
-
-                    if (
-                        !localStop.get()
-                    ) {
-                        onFinished(
-                            errorMessage
-                        )
+                    if (!localStop.get()) {
+                        onFinished(errorMessage)
                     }
                 }
-            }.apply {
-                name =
-                    "Volt1-Selection-Playback"
-
-                start()
-            }
+            },
+            "Volt1-Selection-Playback"
+        ).start()
     }
 
     @Synchronized
     fun stop() {
-        stopFlag.set(
-            true
-        )
+        stopFlag.set(true)
 
-        val track =
-            audioTrack
+        val track = activeTrack
+        activeTrack = null
 
-        runCatching {
-            track?.pause()
-        }
-
-        runCatching {
-            track?.flush()
-        }
-
-        worker =
-            null
+        // pause() interrupts a blocking write(); flush() drops queued audio.
+        runCatching { track?.pause() }
+        runCatching { track?.flush() }
     }
 
-    private fun reportProgress(
+    @Synchronized
+    private fun publishTrack(localStop: AtomicBoolean, track: AudioTrack): Boolean {
+        if (localStop.get()) return false
+        activeTrack = track
+        return true
+    }
+
+    @Synchronized
+    private fun clearTrack(track: AudioTrack) {
+        if (activeTrack === track) activeTrack = null
+    }
+
+    private fun createTrack(info: WavInfo): AudioTrack {
+        WavFile.validateEditable(info)
+
+        val minBuffer = AudioTrack.getMinBufferSize(
+            info.sampleRate,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_24BIT_PACKED
+        )
+
+        if (minBuffer <= 0) {
+            error("Android не поддерживает PCM24 playback")
+        }
+
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_24BIT_PACKED)
+                    .setSampleRate(info.sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(
+                PlaybackMath.alignUp(max(minBuffer * 2, 48 * 1024), info.frameSizeBytes)
+            )
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+
+        if (track.state != AudioTrack.STATE_INITIALIZED) {
+            runCatching { track.release() }
+            error("AudioTrack не инициализирован")
+        }
+
+        return track
+    }
+
+    private fun playRange(
+        context: Context,
+        info: WavInfo,
         track: AudioTrack,
-        safeStart: Long,
-        selectionFrames: Long,
-        totalFrames: Long,
+        startFrame: Long,
+        endFrameExclusive: Long,
+        stop: AtomicBoolean,
         onProgress: (Float) -> Unit
     ) {
-        if (
-            totalFrames <= 0L
-        ) {
-            return
-        }
+        val (safeStart, safeEnd) =
+            WavEdit.clampRange(info.totalFrames, startFrame, endFrameExclusive)
+        val selectionFrames = safeEnd - safeStart
+        val totalFrames = info.totalFrames
+        val frameSize = info.frameSizeBytes
 
-        val played =
-            playbackHeadFrames(
-                track
-            ).coerceIn(
-                0L,
-                selectionFrames
-            )
-
-        val absoluteFrame =
-            safeStart +
-                played
-
-        onProgress(
-            (
-                absoluteFrame.toDouble() /
-                    totalFrames.toDouble()
-                )
-                .toFloat()
-                .coerceIn(
-                    0f,
-                    1f
-                )
+        val trackBufferBytes = track.bufferSizeInFrames * frameSize
+        val buffer = ByteBuffer.allocateDirect(
+            PlaybackMath.alignUp(max(trackBufferBytes, 48 * 1024), frameSize)
         )
-    }
 
-    private fun playbackHeadFrames(
-        track: AudioTrack
-    ): Long =
-        track.playbackHeadPosition
-            .toLong() and
-            0xffffffffL
+        val pfd = context.contentResolver.openFileDescriptor(info.uri, "r")
+            ?: error("Не удалось открыть WAV")
 
-    private fun alignUp(
-        value: Int,
-        alignment: Int
-    ): Int {
-        val remainder =
-            value % alignment
+        fun report(playedFrames: Long) {
+            onProgress(
+                PlaybackMath.progress(safeStart, playedFrames, selectionFrames, totalFrames)
+            )
+        }
 
-        return if (
-            remainder == 0
-        ) {
-            value
-        } else {
-            value +
-                alignment -
-                remainder
+        pfd.use { descriptor ->
+            FileInputStream(descriptor.fileDescriptor).use { input ->
+                val channel = input.channel
+                var filePosition = info.dataOffset + safeStart * frameSize
+                var remaining = selectionFrames * frameSize
+
+                report(0L)
+                track.play()
+
+                while (remaining > 0L && !stop.get()) {
+                    val requested = min(buffer.capacity().toLong(), remaining).toInt()
+                    buffer.clear()
+                    buffer.limit(requested)
+
+                    while (buffer.hasRemaining() && !stop.get()) {
+                        val read = channel.read(buffer, filePosition)
+                        if (read < 0) error("Неожиданный конец WAV при playback")
+                        filePosition += read
+                    }
+
+                    if (stop.get()) return
+
+                    buffer.flip()
+
+                    while (buffer.hasRemaining() && !stop.get()) {
+                        val written = track.write(
+                            buffer,
+                            buffer.remaining(),
+                            AudioTrack.WRITE_BLOCKING
+                        )
+                        if (written < 0) error("AudioTrack.write(): $written")
+                        report(headFrames(track))
+                    }
+
+                    remaining -= requested
+                }
+
+                awaitDrain(track, info.sampleRate, selectionFrames, stop, ::report)
+            }
         }
     }
+
+    /**
+     * Waits until every written frame has been played.
+     *
+     * A streaming AudioTrack that never filled its buffer (short selections)
+     * does not start, and the final partial period may never be mixed, so
+     * the head can stall short of the end forever. If the head stops
+     * advancing, stop() forces the remaining frames out; the head reads 0
+     * after stop(), so progress is then estimated from the clock.
+     */
+    private fun awaitDrain(
+        track: AudioTrack,
+        sampleRate: Int,
+        selectionFrames: Long,
+        stop: AtomicBoolean,
+        report: (Long) -> Unit
+    ) {
+        var lastHead = -1L
+        var lastChange = SystemClock.elapsedRealtime()
+
+        while (!stop.get()) {
+            val head = headFrames(track).coerceAtMost(selectionFrames)
+            report(head)
+
+            if (head >= selectionFrames) return
+
+            val now = SystemClock.elapsedRealtime()
+            if (head != lastHead) {
+                lastHead = head
+                lastChange = now
+            } else if (now - lastChange >= STALL_TIMEOUT_MS) {
+                runCatching { track.stop() }
+
+                val drainStart = SystemClock.elapsedRealtime()
+                val drainMs =
+                    PlaybackMath.framesToMs(selectionFrames - head, sampleRate) + DRAIN_MARGIN_MS
+
+                while (!stop.get()) {
+                    val elapsed = SystemClock.elapsedRealtime() - drainStart
+                    if (elapsed >= drainMs) break
+                    val estimated = head + elapsed * sampleRate / 1000L
+                    report(estimated.coerceAtMost(selectionFrames))
+                    SystemClock.sleep(PROGRESS_POLL_MS)
+                }
+
+                if (!stop.get()) report(selectionFrames)
+                return
+            }
+
+            SystemClock.sleep(PROGRESS_POLL_MS)
+        }
+    }
+
+    private fun headFrames(track: AudioTrack): Long =
+        track.playbackHeadPosition.toLong() and 0xffffffffL
 
     companion object {
-        private const val PROGRESS_POLL_MS =
-            20L
+        private const val PROGRESS_POLL_MS = 20L
+        private const val STALL_TIMEOUT_MS = 300L
+        private const val DRAIN_MARGIN_MS = 50L
+    }
+}
+
+/** Android-free arithmetic used by [Pcm24Player]. */
+object PlaybackMath {
+
+    fun alignUp(value: Int, alignment: Int): Int {
+        require(alignment > 0)
+        val remainder = value % alignment
+        return if (remainder == 0) value else value + alignment - remainder
+    }
+
+    fun framesToMs(frames: Long, sampleRate: Int): Long =
+        if (sampleRate <= 0 || frames <= 0L) 0L else (frames * 1000L + sampleRate - 1) / sampleRate
+
+    /** Absolute timeline position (0..1) of [playedFrames] into a selection. */
+    fun progress(
+        selectionStart: Long,
+        playedFrames: Long,
+        selectionFrames: Long,
+        totalFrames: Long
+    ): Float {
+        if (totalFrames <= 0L) return 0f
+        val absolute = selectionStart + playedFrames.coerceIn(0L, selectionFrames)
+        return (absolute.toDouble() / totalFrames.toDouble()).toFloat().coerceIn(0f, 1f)
     }
 }

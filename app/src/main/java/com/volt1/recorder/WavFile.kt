@@ -41,15 +41,58 @@ object WavFile {
         }
     }
 
-    /** New pending working file containing only [start, end). */
+    /**
+     * New pending working file containing only [start, end), with both
+     * edges moved to the nearest zero crossing (<= 2.5 ms) so the cut does
+     * not start or end with a click.
+     */
     fun cropSelectionWorking(
         context: Context,
         info: WavInfo,
         startFrame: Long,
         endFrameExclusive: Long
     ): Uri = writeWorking(context, info, "Volt1_Working_Crop_") { channel, sink ->
-        WavEdit.crop(channel, info.layout, sink, startFrame, endFrameExclusive)
+        val start = WavProcess.nearestZeroCrossing(channel, info.layout, startFrame)
+        val end = WavProcess.nearestZeroCrossing(channel, info.layout, endFrameExclusive)
+        if (end > start) {
+            WavEdit.crop(channel, info.layout, sink, start, end)
+        } else {
+            WavEdit.crop(channel, info.layout, sink, startFrame, endFrameExclusive)
+        }
     }
+
+    fun fadeSelectionWorking(
+        context: Context,
+        info: WavInfo,
+        startFrame: Long,
+        endFrameExclusive: Long,
+        fadeIn: Boolean
+    ): Uri = writeWorking(context, info, "Volt1_Working_Fade_") { channel, sink ->
+        WavProcess.fade(channel, info.layout, sink, startFrame, endFrameExclusive, fadeIn)
+    }
+
+    /** Whole file to -1 dBFS peak. */
+    fun normalizeWorking(context: Context, info: WavInfo): Uri =
+        writeWorking(context, info, "Volt1_Working_Norm_") { channel, sink ->
+            WavProcess.normalize(channel, info.layout, sink)
+        }
+
+    fun peakAbs(context: Context, info: WavInfo): Int =
+        withChannel(context, info.uri, "Не удалось открыть WAV") {
+            WavProcess.peak(it, info.layout, 0L, info.totalFrames)
+        }
+
+    /** Exact peaks for a zoomed-in frame window. */
+    fun loadWaveformRange(
+        context: Context,
+        info: WavInfo,
+        startFrame: Long,
+        endFrameExclusive: Long,
+        points: Int
+    ): FloatArray =
+        withChannel(context, info.uri, "Не удалось открыть WAV для waveform") {
+            WavProcess.peaksRange(it, info.layout, startFrame, endFrameExclusive, points)
+        }
 
     /** New pending working file with [start, end) removed and the join faded. */
     fun deleteSelectionWorking(

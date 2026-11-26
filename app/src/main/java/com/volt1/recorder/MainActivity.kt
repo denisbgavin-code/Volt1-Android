@@ -81,6 +81,23 @@ class MainActivity : Activity() {
     private lateinit var saveAsButton:
         Button
 
+    private lateinit var fadeInButton:
+        Button
+
+    private lateinit var fadeOutButton:
+        Button
+
+    private lateinit var normalizeButton:
+        Button
+
+    private var detailGeneration =
+        0
+
+    private val detailLoader =
+        Runnable {
+            loadDetailPeaks()
+        }
+
     private val player =
         Pcm24Player()
 
@@ -513,6 +530,31 @@ class MainActivity : Activity() {
             findViewById(
                 R.id.saveAs
             )
+
+        fadeInButton =
+            findViewById(
+                R.id.fadeIn
+            )
+
+        fadeOutButton =
+            findViewById(
+                R.id.fadeOut
+            )
+
+        normalizeButton =
+            findViewById(
+                R.id.normalize
+            )
+
+        fadeInButton.setOnClickListener { fadeSelection(fadeIn = true) }
+        fadeOutButton.setOnClickListener { fadeSelection(fadeIn = false) }
+        normalizeButton.setOnClickListener { normalizeTrack() }
+
+        waveformView
+            .onViewportChanged =
+            { _, _ ->
+                scheduleDetailLoad()
+            }
 
         waveformView
             .onSelectionChanged =
@@ -1275,7 +1317,8 @@ class MainActivity : Activity() {
     private fun loadRecording(
         uri: Uri,
         displayName: String,
-        restoreState: EditState? = null
+        restoreState: EditState? = null,
+        keepViewport: Boolean = false
     ) {
         player.stop()
         playbackActive = false
@@ -1337,8 +1380,13 @@ class MainActivity : Activity() {
                             trackDurationMs =
                                 info.durationMs,
                             resetViewport =
-                                true
+                                !keepViewport
                         )
+
+                    waveformView.totalFrames =
+                        info.totalFrames
+
+                    scheduleDetailLoad()
 
                     selectionStart =
                         targetSelectionStart
@@ -1483,38 +1531,111 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun deleteSelection() {
+    private fun deleteSelection() =
+        rangeEdit(
+            emptyMessage = "Переместите оба вертикальных маркера к удаляемому фрагменту",
+            busy = "Deleting range…",
+            done = "Range deleted • unsaved",
+            failed = "Ошибка удаления",
+            keepsLength = false
+        ) { info, start, end ->
+            WavFile.deleteSelectionWorking(this, info, start, end)
+        }
+
+    private fun cropSelection() =
+        rangeEdit(
+            emptyMessage = "Сдвиньте вертикальные маркеры к нужному диапазону",
+            busy = "Cropping working edit…",
+            done = "Crop applied • unsaved",
+            failed = "Ошибка сохранения",
+            keepsLength = false
+        ) { info, start, end ->
+            WavFile.cropSelectionWorking(this, info, start, end)
+        }
+
+    private fun fadeSelection(
+        fadeIn: Boolean
+    ) =
+        rangeEdit(
+            emptyMessage = "Выделите участок для fade",
+            busy = if (fadeIn) "Fade in…" else "Fade out…",
+            done = if (fadeIn) "Fade in applied • unsaved" else "Fade out applied • unsaved",
+            failed = "Ошибка fade",
+            keepsLength = true
+        ) { info, start, end ->
+            WavFile.fadeSelectionWorking(this, info, start, end, fadeIn)
+        }
+
+    private fun normalizeTrack() {
         val info =
             currentInfo ?: return
 
-        val frames =
+        runWorkingEdit(
+            info = info,
+            busy = "Normalizing to -1 dBFS…",
+            done = "Normalized to -1 dBFS • unsaved",
+            failed = "Ошибка нормализации",
+            keepsLength = true
+        ) {
+            WavFile.normalizeWorking(this, info)
+        }
+    }
+
+    /** Edit of the selected frame range (requires a partial selection). */
+    private fun rangeEdit(
+        emptyMessage: String,
+        busy: String,
+        done: String,
+        failed: String,
+        keepsLength: Boolean,
+        operation: (WavInfo, Long, Long) -> Uri
+    ) {
+        val info =
+            currentInfo ?: return
+
+        val (start, end) =
             selectedFrames(
                 info
             )
 
         val selected =
-            frames.second -
-                frames.first
+            end - start
 
         if (
             selected <= 0L ||
-            selected >=
-            info.totalFrames
+            selected >= info.totalFrames
         ) {
             showMessage(
-                "Переместите оба вертикальных маркера " +
-                    "к удаляемому фрагменту"
+                emptyMessage
             )
 
             return
         }
 
+        runWorkingEdit(info, busy, done, failed, keepsLength) {
+            operation(info, start, end)
+        }
+    }
+
+    /**
+     * Runs an edit that writes a new pending working file, pushes the
+     * previous state for undo and loads the result. Length-preserving
+     * edits keep selection, playhead and zoom.
+     */
+    private fun runWorkingEdit(
+        info: WavInfo,
+        busy: String,
+        done: String,
+        failed: String,
+        keepsLength: Boolean,
+        operation: () -> Uri
+    ) {
         player.stop()
         playbackActive = false
 
         setEditingBusy(
             true,
-            "Deleting range…"
+            busy
         )
 
         val previousState =
@@ -1525,14 +1646,7 @@ class MainActivity : Activity() {
         Thread {
             try {
                 val newUri =
-                    WavFile.deleteSelectionWorking(
-                        context = this,
-                        info = info,
-                        startFrame =
-                            frames.first,
-                        endFrameExclusive =
-                            frames.second
-                    )
+                    operation()
 
                 runOnUiThread {
                     editHistory.addLast(
@@ -1548,18 +1662,21 @@ class MainActivity : Activity() {
 
                     editDirty =
                         true
+
                     setEditingBusy(
                         false,
-                        "Range deleted • unsaved"
+                        done
                     )
 
-                    val displayName =
-                        sessionDisplayName
-                            ?: info.displayName
-
                     loadRecording(
-                        newUri,
-                        displayName
+                        uri = newUri,
+                        displayName =
+                            sessionDisplayName
+                                ?: info.displayName,
+                        restoreState =
+                            if (keepsLength) previousState else null,
+                        keepViewport =
+                            keepsLength
                     )
                 }
 
@@ -1570,112 +1687,13 @@ class MainActivity : Activity() {
                     setEditingBusy(
                         false,
                         t.message
-                            ?: "Ошибка удаления"
+                            ?: failed
                     )
                 }
             }
         }.apply {
             name =
-                "Volt1-Delete-Range"
-
-            start()
-        }
-    }
-
-    private fun cropSelection() {
-        val info =
-            currentInfo ?: return
-
-        val frames =
-            selectedFrames(
-                info
-            )
-
-        val selected =
-            frames.second -
-                frames.first
-
-        if (
-            selected <= 0L ||
-            selected >=
-            info.totalFrames
-        ) {
-            showMessage(
-                "Сдвиньте вертикальные маркеры " +
-                    "к нужному диапазону"
-            )
-
-            return
-        }
-
-        player.stop()
-        playbackActive = false
-
-        setEditingBusy(
-            true,
-            "Cropping working edit…"
-        )
-
-        val previousState =
-            captureEditState(
-                info
-            )
-
-        Thread {
-            try {
-                val newName =
-                    WavFile.cropSelectionWorking(
-                        context = this,
-                        info = info,
-                        startFrame =
-                            frames.first,
-                        endFrameExclusive =
-                            frames.second
-                    )
-
-                runOnUiThread {
-                    editHistory.addLast(
-                        previousState
-                    )
-
-                    ownedWorkingUris.add(
-                        newName
-                    )
-
-                    workingUri =
-                        newName
-
-                    editDirty =
-                        true
-                    setEditingBusy(
-                        false,
-                        "Crop applied • unsaved"
-                    )
-
-                    val displayName =
-                        sessionDisplayName
-                            ?: info.displayName
-
-                    loadRecording(
-                        newName,
-                        displayName
-                    )
-                }
-
-            } catch (
-                t: Throwable
-            ) {
-                runOnUiThread {
-                    setEditingBusy(
-                        false,
-                        t.message
-                            ?: "Ошибка сохранения"
-                    )
-                }
-            }
-        }.apply {
-            name =
-                "Volt1-Crop-Range"
+                "Volt1-Edit"
 
             start()
         }
@@ -1942,6 +1960,15 @@ class MainActivity : Activity() {
         cropButton.isEnabled =
             hasRange
 
+        fadeInButton.isEnabled =
+            hasRange
+
+        fadeOutButton.isEnabled =
+            hasRange
+
+        normalizeButton.isEnabled =
+            hasFile
+
         saveAsButton.isEnabled =
             hasFile
 
@@ -1949,6 +1976,9 @@ class MainActivity : Activity() {
         applyEnabledAlpha(playButton)
         applyEnabledAlpha(deleteButton)
         applyEnabledAlpha(cropButton)
+        applyEnabledAlpha(fadeInButton)
+        applyEnabledAlpha(fadeOutButton)
+        applyEnabledAlpha(normalizeButton)
         applyEnabledAlpha(saveAsButton)
     }
 
@@ -2003,6 +2033,97 @@ class MainActivity : Activity() {
         )
     }
 
+    /** Debounced: exact peaks for the visible window once zoomed in. */
+    private fun scheduleDetailLoad() {
+        handler.removeCallbacks(
+            detailLoader
+        )
+
+        handler.postDelayed(
+            detailLoader,
+            DETAIL_DEBOUNCE_MS
+        )
+    }
+
+    private fun loadDetailPeaks() {
+        val info =
+            currentInfo ?: return
+
+        val (start, end) =
+            waveformView.visibleWindow()
+
+        val span =
+            end - start
+
+        // The 8000-point overview is enough until each point covers > 1 px.
+        if (
+            span >= DETAIL_MAX_SPAN ||
+            waveformView.width <= 0
+        ) {
+            return
+        }
+
+        // Load a window 3x the visible one so short pans stay detailed.
+        val margin =
+            span
+
+        val windowStart =
+            (start - margin).coerceAtLeast(0f)
+
+        val windowEnd =
+            (end + margin).coerceAtMost(1f)
+
+        val total =
+            info.totalFrames
+
+        val startFrame =
+            SelectionMath.cursorFrame(total, windowStart)
+
+        val endFrame =
+            kotlin.math.ceil(total.toDouble() * windowEnd.toDouble())
+                .toLong()
+                .coerceIn(startFrame + 1L, total)
+
+        val points =
+            (waveformView.width * 3 * 2)
+                .coerceIn(64, 20_000)
+
+        val generation =
+            ++detailGeneration
+
+        Thread {
+            val peaks =
+                runCatching {
+                    WavFile.loadWaveformRange(
+                        this,
+                        info,
+                        startFrame,
+                        endFrame,
+                        points
+                    )
+                }.getOrNull()
+                    ?: return@Thread
+
+            runOnUiThread {
+                if (
+                    generation == detailGeneration &&
+                    currentInfo == info
+                ) {
+                    waveformView.setDetail(
+                        startFrame.toFloat() / total,
+                        endFrame.toFloat() / total,
+                        peaks
+                    )
+                }
+            }
+        }.apply {
+            name =
+                "Volt1-Detail-Peaks"
+
+            start()
+        }
+    }
+
     private fun applyEnabledAlpha(
         button: Button
     ) {
@@ -2054,6 +2175,9 @@ class MainActivity : Activity() {
             fitButton.isEnabled = false
             deleteButton.isEnabled = false
             cropButton.isEnabled = false
+            fadeInButton.isEnabled = false
+            fadeOutButton.isEnabled = false
+            normalizeButton.isEnabled = false
             saveAsButton.isEnabled = false
         } else {
             updateEditButtons(
@@ -2133,6 +2257,13 @@ class MainActivity : Activity() {
 
         private const val METER_UPDATE_MS =
             33L
+
+        private const val DETAIL_DEBOUNCE_MS =
+            120L
+
+        /** Below this visible fraction the overview is too coarse. */
+        private const val DETAIL_MAX_SPAN =
+            0.12f
 
         private const val WAVEFORM_POINTS =
             8_000

@@ -28,20 +28,29 @@ object WaveformMath {
         selectionEnd: Float,
         width: Float,
         active: FloatArray,
-        inactive: FloatArray
+        inactive: FloatArray,
+        domainStart: Float = 0f,
+        domainEnd: Float = 1f
     ): Int {
         val columns = columnCount(width, active, inactive)
         if (columns == 0) return 0
 
         val lastIndex = peaks.lastIndex
         val span = visibleEnd - visibleStart
-        if (lastIndex <= 0 || span <= 0f) return columns
+        val domain = domainEnd - domainStart
+        if (lastIndex <= 0 || span <= 0f || domain <= 0f) return columns
 
-        val first = floor(visibleStart * lastIndex).toInt().coerceIn(0, lastIndex)
-        val last = (visibleEnd * lastIndex).toInt().coerceIn(first, lastIndex)
+        // Peaks cover timeline [domainStart, domainEnd] (whole file = 0..1,
+        // or a zoomed-in detail window).
+        val localStart = (visibleStart - domainStart) / domain
+        val localEnd = (visibleEnd - domainStart) / domain
+        val first = floor(localStart * lastIndex).toInt().coerceIn(0, lastIndex)
+        val last = (localEnd * lastIndex).toInt().coerceIn(first, lastIndex)
 
         for (index in first..last) {
-            val fraction = index / lastIndex.toFloat()
+            val fraction =
+                if (domainStart == 0f && domainEnd == 1f) index / lastIndex.toFloat()
+                else domainStart + index / lastIndex.toFloat() * domain
             val x = (fraction - visibleStart) / span * width
             val column = columnOf(x, width, columns)
             if (column < 0) continue

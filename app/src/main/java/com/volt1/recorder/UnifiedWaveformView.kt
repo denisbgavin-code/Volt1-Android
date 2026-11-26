@@ -294,7 +294,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
                                     .scaleFactor
                             )
                             .coerceIn(
-                                MIN_VISIBLE_SPAN,
+                                minVisibleSpan(),
                                 1f
                             )
 
@@ -318,7 +318,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
                         newStart +
                             newSpan
 
-                    invalidate()
+                    viewportChanged()
                     return true
                 }
 
@@ -380,6 +380,40 @@ class UnifiedWaveformView @JvmOverloads constructor(
         ((Float, Float) -> Unit)? =
         null
 
+    /** Called when zoom/pan changed the visible window (timeline fractions). */
+    var onViewportChanged:
+        ((Float, Float) -> Unit)? =
+        null
+
+    /** Frames in the open file; limits zoom to [MIN_VISIBLE_FRAMES]. */
+    var totalFrames: Long = 0L
+
+    // High-resolution peaks for a zoomed-in window, loaded on demand.
+    private var detailPeaks: FloatArray? = null
+    private var detailStart = 0f
+    private var detailEnd = 0f
+
+    /** Installs exact peaks for timeline window [start, end]. */
+    fun setDetail(start: Float, end: Float, values: FloatArray) {
+        detailPeaks = values
+        detailStart = start
+        detailEnd = end
+        invalidate()
+    }
+
+    fun clearDetail() {
+        detailPeaks = null
+    }
+
+    fun visibleWindow(): Pair<Float, Float> = visibleStart to visibleEnd
+
+    private fun minVisibleSpan(): Float =
+        if (totalFrames > 0L) {
+            (MIN_VISIBLE_FRAMES.toFloat() / totalFrames).coerceIn(1e-7f, 1f)
+        } else {
+            MIN_VISIBLE_SPAN
+        }
+
     var onPlayheadChanged:
         ((Float) -> Unit)? =
         null
@@ -430,6 +464,9 @@ class UnifiedWaveformView @JvmOverloads constructor(
         peaks =
             FloatArray(0)
 
+        detailPeaks =
+            null
+
         durationMs =
             0L
 
@@ -462,6 +499,9 @@ class UnifiedWaveformView @JvmOverloads constructor(
         peaks =
             values
 
+        detailPeaks =
+            null
+
         durationMs =
             0L
 
@@ -487,6 +527,9 @@ class UnifiedWaveformView @JvmOverloads constructor(
 
         peaks =
             values
+
+        detailPeaks =
+            null
 
         durationMs =
             trackDurationMs
@@ -534,7 +577,12 @@ class UnifiedWaveformView @JvmOverloads constructor(
         visibleEnd =
             1f
 
+        viewportChanged()
+    }
+
+    private fun viewportChanged() {
         invalidate()
+        onViewportChanged?.invoke(visibleStart, visibleEnd)
     }
 
     fun setSelection(
@@ -772,15 +820,24 @@ class UnifiedWaveformView @JvmOverloads constructor(
             return
         }
 
+        val detail = detailPeaks
+        val useDetail =
+            detail != null &&
+                detail.size > 1 &&
+                detailStart <= visibleStart &&
+                detailEnd >= visibleEnd
+
         val columns = WaveformMath.editColumns(
-            peaks = peaks,
+            peaks = if (useDetail) detail!! else peaks,
             visibleStart = visibleStart,
             visibleEnd = visibleEnd,
             selectionStart = selectionStart,
             selectionEnd = selectionEnd,
             width = width,
             active = activeColumns,
-            inactive = inactiveColumns
+            inactive = inactiveColumns,
+            domainStart = if (useDetail) detailStart else 0f,
+            domainEnd = if (useDetail) detailEnd else 1f
         )
 
         drawColumns(canvas, inactiveColumns, columns, centerY, halfHeight, minAmplitude, inactiveWaveformPaint)
@@ -965,6 +1022,9 @@ class UnifiedWaveformView @JvmOverloads constructor(
         val divisions =
             4
 
+        val visibleDurationMs =
+            (durationMs.toDouble() * (visibleEnd - visibleStart)).toLong()
+
         for (
             i in
             0..divisions
@@ -984,15 +1044,21 @@ class UnifiedWaveformView @JvmOverloads constructor(
 
             val timeMs =
                 (
-                    durationMs *
+                    durationMs.toDouble() *
                         timelineFraction
                     )
                     .toLong()
 
             val label =
-                formatRulerTime(
-                    timeMs
-                )
+                if (visibleDurationMs < 10_000L) {
+                    formatRulerTimeFine(
+                        timeMs
+                    )
+                } else {
+                    formatRulerTime(
+                        timeMs
+                    )
+                }
 
             val x =
                 width *
@@ -1441,7 +1507,7 @@ class UnifiedWaveformView @JvmOverloads constructor(
             start +
                 span
 
-        invalidate()
+        viewportChanged()
     }
 
     private fun keepPlayheadVisible() {
@@ -1480,6 +1546,8 @@ class UnifiedWaveformView @JvmOverloads constructor(
             visibleEnd =
                 newStart +
                     span
+
+            onViewportChanged?.invoke(visibleStart, visibleEnd)
         }
     }
 
@@ -1543,6 +1611,18 @@ class UnifiedWaveformView @JvmOverloads constructor(
             )
     }
 
+    /** m:ss.mmm for zoomed-in views. */
+    private fun formatRulerTimeFine(
+        ms: Long
+    ): String =
+        String.format(
+            java.util.Locale.US,
+            "%d:%02d.%03d",
+            ms / 60_000L,
+            (ms / 1000L) % 60L,
+            ms % 1000L
+        )
+
     private fun formatRulerTime(
         ms: Long
     ): String {
@@ -1571,6 +1651,9 @@ class UnifiedWaveformView @JvmOverloads constructor(
         dp * densityScale
 
     companion object {
+        /** Deepest zoom: 240 frames (5 ms) across the view. */
+        const val MIN_VISIBLE_FRAMES = 240
+
         private const val MIN_VISIBLE_SPAN =
             0.015625f
 

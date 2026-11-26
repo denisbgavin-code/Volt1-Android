@@ -268,6 +268,24 @@
                     android:textStyle="bold" />
 
                 <Button
+                    android:id="@+id/takes"
+                    android:layout_width="0dp"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/studio_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingStart="3dp"
+                    android:paddingEnd="3dp"
+                    android:stateListAnimator="@null"
+                    android:text="TAKES"
+                    android:textAllCaps="false"
+                    android:textColor="#F4F7FA"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <Button
                     android:id="@+id/fitWaveform"
                     android:layout_width="0dp"
                     android:layout_height="38dp"

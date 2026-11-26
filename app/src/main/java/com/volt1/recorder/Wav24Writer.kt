@@ -44,6 +44,10 @@ class Wav24Writer(
     var dataBytes = 0L
         private set
 
+    /** PCM bytes covered by the last [checkpoint] (validated audio). */
+    var checkpointedBytes = 0L
+        private set
+
     private var closed = false
     private var published = false
 
@@ -90,6 +94,37 @@ class Wav24Writer(
         source.position(0)
         writeFully(source)
         dataBytes += bytes
+    }
+
+    /**
+     * Makes the audio written so far durable: header with current sizes,
+     * then fsync. Called periodically while recording so a power loss
+     * leaves a valid file (recovered on next start, see RecordingRecovery).
+     */
+    fun checkpoint() {
+        check(!closed) { "WAV уже закрыт" }
+        writeFullyAt(channel, header(dataBytes), 0L)
+        channel.force(false)
+        checkpointedBytes = dataBytes
+    }
+
+    /**
+     * After a capture failure: drops everything written after the last
+     * checkpoint (not validated), finalizes and publishes the rest.
+     */
+    fun publishCheckpointed() {
+        check(!closed) { "WAV уже закрыт" }
+        check(checkpointedBytes > 0L) { "Нет проверенного звука" }
+
+        WavHeader.truncateAndFinalize(channel, sampleRate, channels, 24, checkpointedBytes)
+        dataBytes = checkpointedBytes
+        channel.force(true)
+        channel.close()
+        output.close()
+        descriptor.close()
+        closed = true
+
+        closeAndPublish()
     }
 
     fun closeAndPublish() {

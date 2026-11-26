@@ -16,7 +16,10 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
+import android.os.Environment
 import android.os.IBinder
+import android.os.PowerManager
+import android.os.StatFs
 import android.os.SystemClock
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -83,10 +86,34 @@ class RecorderService : Service() {
     private fun capture(deviceId: Int) {
         var writer: Wav24Writer? = null
         var published = false
+        var stopReason: String? = null
+
+        /*
+         * The foreground service keeps the process alive but not the CPU:
+         * with the screen off some devices otherwise suspend between reads.
+         */
+        var wakeLock: PowerManager.WakeLock? = null
 
         try {
+            active = true
+
+            wakeLock = getSystemService(PowerManager::class.java)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Volt1Recorder:capture")
+                .apply {
+                    setReferenceCounted(false)
+                    acquire(RecordingGuards.WAKE_LOCK_TIMEOUT_MS)
+                }
+
             resetPublicState()
             status = "Поиск Volt 1…"
+
+            val freeAtStart = freeStorageBytes()
+            if (!RecordingGuards.canStart(freeAtStart)) {
+                error(
+                    "Мало места: ${freeAtStart / (1024 * 1024)} МБ " +
+                        "(нужно ≥ ${RecordingGuards.MIN_FREE_TO_START / (1024 * 1024)} МБ)"
+                )
+            }
 
             val audioManager =
                 getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -266,6 +293,15 @@ class RecorderService : Service() {
                                 ?: error("Потеряна конфигурация audio capture")
                             validateCapturePath(audioRecord, device, config)
                             blocksSinceValidation = 0
+
+                            // Everything written so far passed validation:
+                            // make it durable and recoverable after a crash.
+                            writer.checkpoint()
+
+                            if (RecordingGuards.mustStop(freeStorageBytes())) {
+                                stopReason = "Остановлено: заканчивается память"
+                                break
+                            }
                         }
                     }
 
@@ -293,13 +329,37 @@ class RecorderService : Service() {
 
             lastSavedUri = writer.uri.toString()
             recording = false
-            status = "Сохранено: ${writer.displayName}"
+            status = stopReason?.let { "$it • сохранено: ${writer.displayName}" }
+                ?: "Сохранено: ${writer.displayName}"
             peakDb = -120f
 
         } catch (t: Throwable) {
+            val reason = t.message ?: t.javaClass.simpleName
             recording = false
             peakDb = -120f
-            status = "Запись остановлена: ${t.message ?: t.javaClass.simpleName}"
+
+            /*
+             * Keep the audio that passed validation (up to the last
+             * checkpoint, <= ~1 s before the failure); anything after it is
+             * cut off, so the file is still guaranteed 24/48 end to end.
+             */
+            val saved = writer
+                ?.takeIf { !published && it.checkpointedBytes > 0L }
+                ?.let { w ->
+                    runCatching {
+                        w.publishCheckpointed()
+                        published = true
+                        lastSavedUri = w.uri.toString()
+                        w
+                    }.getOrNull()
+                }
+
+            status = if (saved != null) {
+                val seconds = saved.checkpointedBytes / RecordingGuards.BYTES_PER_SECOND
+                "Запись остановлена: $reason • сохранено ${seconds} с до обрыва"
+            } else {
+                "Запись остановлена: $reason"
+            }
         } finally {
             runCatching { recorder?.release() }
             recorder = null
@@ -308,10 +368,19 @@ class RecorderService : Service() {
                 runCatching { writer?.abort() }
             }
 
+            runCatching { if (wakeLock?.isHeld == true) wakeLock.release() }
+            active = false
+
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
     }
+
+    /** Free bytes on the shared storage volume, or -1 if unknown. */
+    private fun freeStorageBytes(): Long =
+        runCatching {
+            StatFs(Environment.getExternalStorageDirectory().absolutePath).availableBytes
+        }.getOrDefault(-1L)
 
     private fun awaitValidConfiguration(
         audioRecord: AudioRecord
@@ -505,6 +574,11 @@ class RecorderService : Service() {
 
         @Volatile
         var recording: Boolean = false
+            private set
+
+        /** True from capture start until its file is published or discarded. */
+        @Volatile
+        var active: Boolean = false
             private set
 
         @Volatile

@@ -19,7 +19,9 @@ Requesting 24-bit/48 kHz from AudioRecord is not enough: Android may resample or
 
 After capture starts, the service verifies the actual Volt 1 route, client PCM24/48 format, hardware-interface 48 kHz rate, hardware-interface sample format above PCM16, and absence of active preprocessing. The checks repeat while recording.
 
-If the route or format becomes invalid, the recording stops. An incomplete recording is deleted instead of being published as a valid 24/48 WAV.
+If the route or format becomes invalid, the recording stops. The audio that passed the last validation (at most ~1 s before the failure) is kept and published; everything after it is cut off, so a published file is still 24/48 from start to end. A take that never passed validation is deleted.
+
+After every successful validation the WAV header is rewritten and fsync'd. If the app is killed or the phone loses power, the next start recovers the take up to that checkpoint.
 
 ## Requirements
 

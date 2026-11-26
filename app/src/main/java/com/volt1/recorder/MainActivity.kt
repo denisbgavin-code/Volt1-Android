@@ -613,6 +613,49 @@ class MainActivity : Activity() {
 
         waveformView.showIdle()
         refreshVolt()
+        recoverInterruptedRecordings()
+    }
+
+    /** Publishes recordings cut off by a crash/reboot (see RecordingRecovery). */
+    private fun recoverInterruptedRecordings() {
+        Thread {
+            val result =
+                runCatching {
+                    RecordingRecovery.run(
+                        applicationContext
+                    )
+                }.getOrNull()
+                    ?: return@Thread
+
+            val message =
+                when {
+                    result.recovered.size == 1 ->
+                        "Восстановлена прерванная запись: ${result.recovered.first()}"
+
+                    result.recovered.size > 1 ->
+                        "Восстановлено прерванных записей: ${result.recovered.size}"
+
+                    result.failed.isNotEmpty() ->
+                        "Не удалось восстановить: ${result.failed.joinToString()}"
+
+                    else ->
+                        null
+                }
+                    ?: return@Thread
+
+            runOnUiThread {
+                if (!isDestroyed) {
+                    showMessage(
+                        message
+                    )
+                }
+            }
+        }.apply {
+            name =
+                "Volt1-Recovery"
+
+            start()
+        }
     }
 
     override fun onResume() {

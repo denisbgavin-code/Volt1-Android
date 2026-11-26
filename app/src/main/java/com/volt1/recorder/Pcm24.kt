@@ -76,6 +76,8 @@ object Pcm24 {
         var bytes: Int = 0
         var peakLinear: Float = 0f
         var peakDb: Float = SILENCE_DB
+        /** Samples at or above [LevelMeter.CLIP_LEVEL] (-0.1 dBFS). */
+        var clippedSamples: Int = 0
     }
 
     /**
@@ -105,6 +107,7 @@ object Pcm24 {
         }
 
         var peak = 0
+        var clipped = 0
         var sourceOffset = 0
         var destinationOffset = 0
 
@@ -113,6 +116,7 @@ object Pcm24 {
             encode(q23, destination, destinationOffset)
             val magnitude = if (q23 < 0) -q23 else q23
             if (magnitude > peak) peak = magnitude
+            if (magnitude >= LevelMeter.CLIP_LEVEL) clipped++
             sourceOffset += sourceFrameSizeBytes
             destinationOffset += BYTES_PER_SAMPLE
         }
@@ -121,6 +125,7 @@ object Pcm24 {
         result.bytes = outputBytes
         result.peakLinear = linear
         result.peakDb = linearToDb(linear)
+        result.clippedSamples = clipped
         return result
     }
 }

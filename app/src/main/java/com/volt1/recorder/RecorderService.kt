@@ -334,9 +334,32 @@ class RecorderService : Service() {
             peakDb = -120f
 
         } catch (t: Throwable) {
+            val reason = t.message ?: t.javaClass.simpleName
             recording = false
             peakDb = -120f
-            status = "Запись остановлена: ${t.message ?: t.javaClass.simpleName}"
+
+            /*
+             * Keep the audio that passed validation (up to the last
+             * checkpoint, <= ~1 s before the failure); anything after it is
+             * cut off, so the file is still guaranteed 24/48 end to end.
+             */
+            val saved = writer
+                ?.takeIf { !published && it.checkpointedBytes > 0L }
+                ?.let { w ->
+                    runCatching {
+                        w.publishCheckpointed()
+                        published = true
+                        lastSavedUri = w.uri.toString()
+                        w
+                    }.getOrNull()
+                }
+
+            status = if (saved != null) {
+                val seconds = saved.checkpointedBytes / RecordingGuards.BYTES_PER_SECOND
+                "Запись остановлена: $reason • сохранено ${seconds} с до обрыва"
+            } else {
+                "Запись остановлена: $reason"
+            }
         } finally {
             runCatching { recorder?.release() }
             recorder = null

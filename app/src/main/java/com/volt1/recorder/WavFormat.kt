@@ -141,10 +141,28 @@ object WavHeader {
         val available = size - HEADER_BYTES
         val pcmBytes = minOf(checkpointed, available).let { it - it % frameSize }
 
-        writeChannel.truncate(HEADER_BYTES + pcmBytes)
-        finalize(writeChannel, sampleRate, channels, bitsPerSample, pcmBytes)
+        truncateAndFinalize(writeChannel, sampleRate, channels, bitsPerSample, pcmBytes)
         writeChannel.force(true)
         return pcmBytes
+    }
+
+    /**
+     * Cuts a streamed file back to its first [pcmBytes] of PCM (whole
+     * frames) and finalizes it. Used to keep only checkpointed audio.
+     */
+    fun truncateAndFinalize(
+        channel: FileChannel,
+        sampleRate: Int,
+        channels: Int,
+        bitsPerSample: Int,
+        pcmBytes: Long
+    ) {
+        val frameSize = channels * bitsPerSample / 8
+        require(frameSize > 0 && pcmBytes >= 0L && pcmBytes % frameSize == 0L) {
+            "PCM size must be whole frames"
+        }
+        channel.truncate(HEADER_BYTES + pcmBytes)
+        finalize(channel, sampleRate, channels, bitsPerSample, pcmBytes)
     }
 
     /** Parses the RIFF chunk list; fails closed on any structural damage. */

@@ -167,6 +167,42 @@ class RecoveryTest {
     }
 
     @Test
+    fun captureFailureKeepsOnlyCheckpointedAudio() {
+        // RecorderService catch path: Wav24Writer.publishCheckpointed().
+        val random = Random(55)
+        val validated = TestWav.randomSamples(random, 96_001)
+        val file = tmp.newFile()
+        val writer = FileWavWriter(file)
+        writer.writeSamples(validated)
+        writer.checkpoint()
+        writer.writeSamples(TestWav.randomSamples(random, 40_000)) // route broke here
+        writer.crash()
+
+        RandomAccessFile(file, "rw").use {
+            WavHeader.truncateAndFinalize(it.channel, 48_000, 1, 24, 96_001L * 3)
+        }
+        val layout = TestWav.layout(file)
+        WavEdit.validateEditable(layout)
+        assertEquals(96_001L, layout.totalFrames)
+        assertEquals(44L + 96_001 * 3 + 1, file.length()) // odd -> pad byte
+        assertArrayEquals(validated, TestWav.readSamples(file))
+    }
+
+    @Test
+    fun truncateAndFinalizeRejectsPartialFrames() {
+        val file = TestWav.write(tmp.newFile(), IntArray(100))
+        RandomAccessFile(file, "rw").use {
+            assertThrows(IllegalArgumentException::class.java) {
+                WavHeader.truncateAndFinalize(it.channel, 48_000, 1, 24, 10)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                WavHeader.truncateAndFinalize(it.channel, 48_000, 1, 24, -3)
+            }
+        }
+        assertEquals(100L, TestWav.layout(file).totalFrames)
+    }
+
+    @Test
     fun recoveredFileCanBeEditedImmediately() {
         val samples = TestWav.randomSamples(Random(54), 30_000)
         val file = tmp.newFile()

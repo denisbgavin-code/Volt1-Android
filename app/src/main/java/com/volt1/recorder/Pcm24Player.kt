@@ -196,10 +196,14 @@ class Pcm24Player {
 
                     buffer.flip()
 
+                    // Small writes: a blocking write returns as soon as ~21 ms
+                    // of space frees up, so the position is reported ~50x/s
+                    // instead of once per ~340 ms buffer.
+                    val chunkBytes = WRITE_CHUNK_FRAMES * frameSize
                     while (buffer.hasRemaining() && !stop.get()) {
                         val written = track.write(
                             buffer,
-                            buffer.remaining(),
+                            min(buffer.remaining(), chunkBytes),
                             AudioTrack.WRITE_BLOCKING
                         )
                         if (written < 0) error("AudioTrack.write(): $written")
@@ -285,6 +289,7 @@ class Pcm24Player {
 
     companion object {
         private const val PROGRESS_POLL_MS = 20L
+        private const val WRITE_CHUNK_FRAMES = 1_024
         private const val STALL_TIMEOUT_MS = 300L
         private const val DRAIN_MARGIN_MS = 50L
     }

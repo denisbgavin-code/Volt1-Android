@@ -2163,9 +2163,29 @@ class MainActivity : Activity() {
 
     /** Debounced: exact peaks for the visible window once zoomed in. */
     private fun scheduleDetailLoad() {
+        val (start, end) =
+            waveformView.visibleWindow()
+
+        // Still inside the loaded window: nothing to do. Matters while the
+        // view follows the playhead and changes on every frame.
+        if (waveformView.detailCovers(start, end)) return
+
+        if (playbackActive) {
+            // Throttle (not debounce) while scrolling with playback, else a
+            // reset on every frame would postpone the load forever.
+            if (!detailLoadPending) {
+                detailLoadPending = true
+                handler.postDelayed(detailLoader, DETAIL_DEBOUNCE_MS)
+            }
+            return
+        }
+
         handler.removeCallbacks(
             detailLoader
         )
+
+        detailLoadPending =
+            true
 
         handler.postDelayed(
             detailLoader,
@@ -2173,7 +2193,13 @@ class MainActivity : Activity() {
         )
     }
 
+    private var detailLoadPending =
+        false
+
     private fun loadDetailPeaks() {
+        detailLoadPending =
+            false
+
         val info =
             currentInfo ?: return
 
@@ -2191,15 +2217,19 @@ class MainActivity : Activity() {
             return
         }
 
-        // Load a window 3x the visible one so short pans stay detailed.
-        val margin =
+        // Load around the visible window so short pans stay detailed; while
+        // playing, load further ahead because the view scrolls forward.
+        val marginBefore =
             span
 
+        val marginAfter =
+            if (playbackActive) span * 4f else span
+
         val windowStart =
-            (start - margin).coerceAtLeast(0f)
+            (start - marginBefore).coerceAtLeast(0f)
 
         val windowEnd =
-            (end + margin).coerceAtMost(1f)
+            (end + marginAfter).coerceAtMost(1f)
 
         val total =
             info.totalFrames
@@ -2212,8 +2242,10 @@ class MainActivity : Activity() {
                 .toLong()
                 .coerceIn(startFrame + 1L, total)
 
+        // ~2 points per pixel across the whole loaded window.
         val points =
-            (waveformView.width * 3 * 2)
+            (waveformView.width * 2 * ((windowEnd - windowStart) / span))
+                .toInt()
                 .coerceIn(64, 20_000)
 
         val generation =

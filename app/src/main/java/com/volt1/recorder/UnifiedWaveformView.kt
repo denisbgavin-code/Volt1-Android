@@ -1510,45 +1510,47 @@ class UnifiedWaveformView @JvmOverloads constructor(
         viewportChanged()
     }
 
+    /**
+     * Zoomed in: the view scrolls continuously with the playhead, keeping
+     * it at [FOLLOW_AT] of the width once it gets there (no page jumps).
+     * A playhead outside the view (seek elsewhere) is centred.
+     */
     private fun keepPlayheadVisible() {
         val span =
             visibleEnd -
                 visibleStart
 
-        if (
-            span >=
-            0.9999f
-        ) {
-            return
-        }
+        if (span >= 0.9999f) return
 
-        if (
-            playbackPosition <
-            visibleStart ||
-            playbackPosition >
-            visibleEnd
-        ) {
-            val newStart =
-                (
-                    playbackPosition -
-                        span /
-                        2f
-                    )
-                    .coerceIn(
-                        0f,
-                        1f -
-                            span
-                    )
+        val newStart =
+            when {
+                playbackPosition < visibleStart ||
+                    playbackPosition > visibleEnd ->
+                    playbackPosition - span / 2f
 
-            visibleStart =
-                newStart
+                playbackPosition > visibleStart + span * FOLLOW_AT ->
+                    playbackPosition - span * FOLLOW_AT
 
-            visibleEnd =
-                newStart +
-                    span
+                else ->
+                    return
+            }.coerceIn(0f, 1f - span)
 
-            onViewportChanged?.invoke(visibleStart, visibleEnd)
-        }
+        if (newStart == visibleStart) return
+
+        visibleStart =
+            newStart
+
+        visibleEnd =
+            newStart +
+                span
+
+        onViewportChanged?.invoke(visibleStart, visibleEnd)
+    }
+
+    /** True when loaded detail peaks already cover [start, end]. */
+    fun detailCovers(start: Float, end: Float): Boolean {
+        val detail = detailPeaks ?: return false
+        return detail.size > 1 && detailStart <= start && detailEnd >= end
     }
 
     private fun timelineToX(
@@ -1656,6 +1658,9 @@ class UnifiedWaveformView @JvmOverloads constructor(
 
         private const val MIN_VISIBLE_SPAN =
             0.015625f
+
+        /** Playhead position (fraction of width) the view follows at. */
+        private const val FOLLOW_AT = 0.5f
 
         private const val MIN_SELECTION_SPAN =
             0.0005f

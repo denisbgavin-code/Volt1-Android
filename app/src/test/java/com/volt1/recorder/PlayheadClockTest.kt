@@ -30,8 +30,44 @@ class PlayheadClockTest {
         clock.start(0, 10_000_000, 0)
         assertEquals(12_000L, clock.estimate(250 * ms))
         assertEquals(12_000L, clock.estimate(5_000 * ms))   // audio stalled
-        clock.onReport(12_500, 5_000 * ms)
-        assertEquals(12_500L + 4_800, clock.estimate(5_100 * ms))
+        clock.onReport(12_500, 5_000 * ms)                  // small error: smoothed
+        assertEquals(12_125L + 4_800, clock.estimate(5_100 * ms))
+    }
+
+    @Test
+    fun smallErrorsAreCorrectedGraduallyLargeOnesSnap() {
+        val clock = PlayheadClock(48_000)
+        clock.start(0, 10_000_000, 0)
+        // Prediction at 100 ms is 4 800; report says 5 200 (+400): 25 % now.
+        clock.onReport(5_200, 100 * ms)
+        assertEquals(4_900L, clock.estimate(100 * ms))
+        // Large error (> 100 ms of audio) is taken as is.
+        clock.onReport(20_000, 120 * ms)
+        assertEquals(20_000L, clock.estimate(120 * ms))
+    }
+
+    @Test
+    fun frequentReportsWithJitterGiveEvenSteps() {
+        // Reports every ~21 ms with +-1 ms timestamp jitter; drawn at 60 fps.
+        val random = Random(91)
+        val clock = PlayheadClock(48_000)
+        clock.start(0, 100_000_000, 0)
+        var nextReport = 21 * ms
+        var last = 0L
+        var frameTime = 0L
+        repeat(600) {
+            frameTime += 16_666_667L
+            while (nextReport <= frameTime) {
+                val truth = nextReport * 48 / 1_000_000
+                clock.onReport(truth + random.nextLong(-48, 49), nextReport)
+                nextReport += 21 * ms
+            }
+            val value = clock.estimate(frameTime)
+            val step = value - last
+            // Ideal step 800 frames per display frame; no stalls, no jumps.
+            assertTrue("step $step", step in 650..950)
+            last = value
+        }
     }
 
     @Test
@@ -39,10 +75,10 @@ class PlayheadClockTest {
         val clock = PlayheadClock(48_000)
         clock.start(0, 10_000_000, 0)
         val ahead = clock.estimate(200 * ms)                // 9 600
-        clock.onReport(5_000, 200 * ms)                     // report behind the estimate
+        clock.onReport(2_000, 200 * ms)                     // far behind (> 100 ms): snaps
         assertEquals(ahead, clock.estimate(200 * ms))       // holds instead of jumping back
-        assertEquals(ahead, clock.estimate(250 * ms))       // 5 000 + 2 400 < 9 600
-        assertEquals(5_000L + 48 * 120, clock.estimate(320 * ms))   // catches up, then continues
+        assertEquals(ahead, clock.estimate(300 * ms))       // 2 000 + 4 800 < 9 600
+        assertEquals(2_000L + 48 * 200, clock.estimate(400 * ms))   // catches up, then continues
     }
 
     @Test

@@ -13,7 +13,11 @@ package com.volt1.recorder
  */
 class PlayheadClock(
     private val sampleRate: Int,
-    private val maxExtrapolationNanos: Long = 250_000_000L
+    private val maxExtrapolationNanos: Long = 500_000_000L,
+    /** Share of a report's error corrected at once; the rest by drift. */
+    private val correctionGain: Double = 0.25,
+    /** Errors above this (frames) are not smoothed but taken as-is. */
+    private val snapFrames: Long = sampleRate / 10L
 ) {
     private var anchorFrame = 0L
     private var anchorNanos = 0L
@@ -35,19 +39,31 @@ class PlayheadClock(
         running = false
     }
 
-    /** A measured presented frame at [nowNanos]. */
+    /**
+     * A measured presented frame at [nowNanos]. Small errors against the
+     * running prediction are corrected gradually (no visible jump); large
+     * ones (start, seek, stall) are taken directly.
+     */
     fun onReport(frame: Long, nowNanos: Long) {
         if (!running) return
-        anchorFrame = frame.coerceAtMost(endFrame)
+        val measured = frame.coerceAtMost(endFrame)
+        val predicted = predict(nowNanos)
+        val error = measured - predicted
+        anchorFrame =
+            if (kotlin.math.abs(error) > snapFrames) measured
+            else predicted + (error * correctionGain).toLong()
         anchorNanos = nowNanos
+    }
+
+    private fun predict(nowNanos: Long): Long {
+        val elapsed = (nowNanos - anchorNanos).coerceIn(0L, maxExtrapolationNanos)
+        return anchorFrame + elapsed * sampleRate / 1_000_000_000L
     }
 
     /** Smoothed frame for drawing at [nowNanos]. */
     fun estimate(nowNanos: Long): Long {
         if (!running) return lastOutput
-        val elapsed = (nowNanos - anchorNanos).coerceIn(0L, maxExtrapolationNanos)
-        val extrapolated = anchorFrame + elapsed * sampleRate / 1_000_000_000L
-        val value = maxOf(lastOutput, extrapolated).coerceAtMost(endFrame)
+        val value = maxOf(lastOutput, predict(nowNanos)).coerceAtMost(endFrame)
         lastOutput = value
         return value
     }

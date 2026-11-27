@@ -1,90 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  Layout, top to bottom, by how often and how urgently things are needed:
+  status -> waveform/time/level (what you look at) -> file -> edit tools
+  grouped by what they act on (selection vs whole track) -> transport pinned
+  at the bottom in the thumb zone, never scrolled away.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0B0D10"
-    android:clipToPadding="false"
-    android:fillViewport="true">
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="12dp"
-        android:paddingTop="12dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="14dp">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:fontFamily="sans-serif-medium"
-                android:letterSpacing="0.12"
-                android:text="VOLT // STUDIO"
-                android:textColor="#5CDCA5"
-                android:textSize="10sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:text="v0.4.7"
-                android:textColor="#7F8793"
-                android:textSize="10sp" />
-        </LinearLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:fontFamily="sans-serif-medium"
-            android:text="USB Audio Recorder"
-            android:textColor="#F4F7FA"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/deviceStatus"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="○ Volt 1 offline"
-                android:textColor="#8C95A3"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="24-bit / 48 kHz"
-                android:textColor="#69717D"
-                android:textSize="9sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/studio_card"
+            android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:paddingStart="12dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="10dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -93,356 +34,451 @@
                 android:orientation="horizontal">
 
                 <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:letterSpacing="0.08"
-                    android:text="WAVEFORM"
-                    android:textColor="#8C95A3"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/recordState"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif-medium"
-                    android:text="○ OFFLINE"
-                    android:textColor="#7F8793"
+                    android:letterSpacing="0.12"
+                    android:text="VOLT 1 RECORDER"
+                    android:textColor="#5CDCA5"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:fontFamily="monospace"
+                    android:text="v0.5.1"
+                    android:textColor="#5E6672"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/deviceStatus"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:gravity="end"
+                    android:maxLines="1"
+                    android:text="○ Volt 1 offline"
+                    android:textColor="#8C95A3"
                     android:textSize="11sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- Takes all spare height; the waveform inside grows with it. -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:gravity="bottom"
-                android:orientation="horizontal">
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_card"
+                android:orientation="vertical"
+                android:paddingStart="12dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="10dp">
 
-                <TextView
-                    android:id="@+id/recordTime"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/recordState"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:minWidth="64dp"
+                        android:text="○ OFFLINE"
+                        android:textColor="#7F8793"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/recordTime"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:gravity="center"
+                        android:text="00:00:00.0"
+                        android:textColor="#F4F7FA"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/peakValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:gravity="end"
+                        android:minWidth="64dp"
+                        android:text="— dBFS"
+                        android:textColor="#C9D0D8"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <com.volt1.recorder.UnifiedWaveformView
+                    android:id="@+id/waveform"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
                     android:layout_weight="1"
-                    android:fontFamily="monospace"
-                    android:text="00:00:00.0"
-                    android:textColor="#F4F7FA"
-                    android:textSize="27sp"
-                    android:textStyle="bold" />
+                    android:minHeight="150dp"
+                    android:layout_marginTop="6dp"
+                    android:background="#101318"
+                    android:contentDescription="Live and editable audio waveform" />
+
+                <com.volt1.recorder.LevelMeterView
+                    android:id="@+id/meter"
+                    android:layout_width="match_parent"
+                    android:layout_height="24dp"
+                    android:layout_marginTop="8dp"
+                    android:contentDescription="Input level meter, tap to clear clip and max" />
 
                 <TextView
-                    android:id="@+id/peakValue"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/status"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:text="— dBFS"
-                    android:textColor="#F4F7FA"
-                    android:textSize="13sp" />
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:text="24-bit / 48 kHz"
+                    android:textColor="#8C95A3"
+                    android:textSize="11sp" />
             </LinearLayout>
 
-            <com.volt1.recorder.UnifiedWaveformView
-                android:id="@+id/waveform"
-                android:layout_width="match_parent"
-                android:layout_height="120dp"
-                android:layout_marginTop="6dp"
-                android:background="#101318"
-                android:contentDescription="Live and editable audio waveform" />
-
-            <com.volt1.recorder.LevelMeterView
-                android:id="@+id/meter"
-                android:layout_width="match_parent"
-                android:layout_height="24dp"
-                android:layout_marginTop="8dp"
-                android:contentDescription="Input level meter, tap to clear clip and max" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:text="Tap = seek • hold + drag = select • pinch = zoom • drag = pan"
-                android:textColor="#626A76"
-                android:textSize="9sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/studio_card"
-            android:orientation="vertical"
-            android:padding="9dp">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="AUDIO"
-                    android:textColor="#8C95A3"
-                    android:textSize="9sp"
-                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/file"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
+                    android:layout_marginStart="2dp"
+                    android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:ellipsize="middle"
                     android:maxLines="1"
                     android:text="No file loaded"
                     android:textColor="#F4F7FA"
-                    android:textIsSelectable="true"
-                    android:textSize="11sp" />
+                    android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/takes"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="72dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="0dp"
+                android:layout_marginEnd="3dp"
+                                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Takes"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/openFile"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="72dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="0dp"
+                                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Open…"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
             </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:layout_marginStart="2dp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.1"
+            android:text="SELECTION"
+            android:textColor="#5E6672"
+            android:textSize="9sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
+                android:layout_marginTop="4dp"
                 android:orientation="horizontal">
 
-                <Button
-                    android:id="@+id/deleteSelection"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginEnd="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_record"
-                    android:enabled="false"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="DELETE RANGE"
-                    android:textAllCaps="false"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
+            <Button
+                android:id="@+id/deleteSelection"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="0dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Cut"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text_danger"
+                android:textSize="12sp" />
 
-                <Button
-                    android:id="@+id/cropSelection"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginStart="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:enabled="false"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="CROP RANGE"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
+            <Button
+                android:id="@+id/cropSelection"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Crop"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/fadeIn"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Fade in"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/fadeOut"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Fade out"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
             </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:layout_marginStart="2dp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.1"
+            android:text="TRACK"
+            android:textColor="#5E6672"
+            android:textSize="9sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="4dp"
                 android:orientation="horizontal">
 
-                <Button
-                    android:id="@+id/fadeIn"
-                    android:layout_width="0dp"
-                    android:layout_height="36dp"
-                    android:layout_marginEnd="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:enabled="false"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="FADE IN"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
+            <Button
+                android:id="@+id/undo"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="0dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Undo"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
 
-                <Button
-                    android:id="@+id/fadeOut"
-                    android:layout_width="0dp"
-                    android:layout_height="36dp"
-                    android:layout_marginStart="3dp"
-                    android:layout_marginEnd="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:enabled="false"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="FADE OUT"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
+            <Button
+                android:id="@+id/fitWaveform"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Fit"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
 
-                <Button
-                    android:id="@+id/normalize"
-                    android:layout_width="0dp"
-                    android:layout_height="36dp"
-                    android:layout_marginStart="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:enabled="false"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="NORMALIZE"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/openFile"
-                    android:layout_width="0dp"
-                    android:layout_height="38dp"
-                    android:layout_marginEnd="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="OPEN"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/takes"
-                    android:layout_width="0dp"
-                    android:layout_height="38dp"
-                    android:layout_marginStart="3dp"
-                    android:layout_marginEnd="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="TAKES"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/fitWaveform"
-                    android:layout_width="0dp"
-                    android:layout_height="38dp"
-                    android:layout_marginStart="3dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/studio_button_secondary"
-                    android:enabled="false"
-                    android:minWidth="0dp"
-                    android:paddingStart="3dp"
-                    android:paddingEnd="3dp"
-                    android:stateListAnimator="@null"
-                    android:text="FIT"
-                    android:textAllCaps="false"
-                    android:textColor="#F4F7FA"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+            <Button
+                android:id="@+id/normalize"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_tool"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Normalize"
+                android:textAllCaps="false"
+                android:textColor="@color/tool_text"
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/saveAs"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/studio_button_accent"
+                android:enabled="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:stateListAnimator="@null"
+                android:text="Save as…"
+                android:textAllCaps="false"
+                android:textColor="@color/on_accent_text"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
                 android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:layout_marginTop="6dp"
-                android:background="@drawable/studio_button_accent"
-                android:enabled="false"
-                android:minWidth="0dp"
-                android:stateListAnimator="@null"
-                android:text="SAVE AS…"
-                android:textAllCaps="false"
-                android:textColor="#0B0D10"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:text="Tap = seek · hold + drag = select · pinch = zoom · drag = pan · Back = undo"
+                android:textColor="#4E5560"
+                android:textSize="10sp" />
         </LinearLayout>
+    </ScrollView>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/studio_transport_bar"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="12dp">
 
-            <Button
-                android:id="@+id/start"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_marginEnd="4dp"
-                android:layout_weight="1"
-                android:background="@drawable/studio_button_record"
-                android:enabled="false"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:stateListAnimator="@null"
-                android:text="● REC"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+        <Button
+            android:id="@+id/start"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="0dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/studio_button_record"
+            android:enabled="false"
+            android:minWidth="0dp"
+            android:stateListAnimator="@null"
+            android:text="● REC"
+            android:textAllCaps="false"
+            android:textColor="@color/on_record_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/playSelection"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="2dp"
-                android:layout_marginEnd="2dp"
-                android:layout_weight="1"
-                android:background="@drawable/studio_button_accent"
-                android:enabled="false"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:stateListAnimator="@null"
-                android:text="▶ PLAY"
-                android:textAllCaps="false"
-                android:textColor="#0B0D10"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+        <Button
+            android:id="@+id/playSelection"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1.3"
+            android:background="@drawable/studio_button_accent"
+            android:enabled="false"
+            android:minWidth="0dp"
+            android:stateListAnimator="@null"
+            android:text="▶ PLAY"
+            android:textAllCaps="false"
+            android:textColor="@color/on_accent_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/stop"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="4dp"
-                android:layout_weight="1"
-                android:background="@drawable/studio_button_stop"
-                android:enabled="false"
-                android:minWidth="0dp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:stateListAnimator="@null"
-                android:text="■ STOP"
-                android:textAllCaps="false"
-                android:textColor="#0B0D10"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
+        <Button
+            android:id="@+id/stop"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="0dp"
+            android:layout_weight="1"
+            android:background="@drawable/studio_button_stop"
+            android:enabled="false"
+            android:minWidth="0dp"
+            android:stateListAnimator="@null"
+            android:text="■ STOP"
+            android:textAllCaps="false"
+            android:textColor="@color/on_stop_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
     </LinearLayout>
-</ScrollView>
+</LinearLayout>

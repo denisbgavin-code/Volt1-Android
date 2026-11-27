@@ -90,6 +90,9 @@ class MainActivity : Activity() {
     private lateinit var normalizeButton:
         Button
 
+    private lateinit var undoButton:
+        Button
+
     private var detailGeneration =
         0
 
@@ -549,6 +552,17 @@ class MainActivity : Activity() {
         fadeInButton.setOnClickListener { fadeSelection(fadeIn = true) }
         fadeOutButton.setOnClickListener { fadeSelection(fadeIn = false) }
         normalizeButton.setOnClickListener { normalizeTrack() }
+
+        undoButton =
+            findViewById(
+                R.id.undo
+            )
+
+        undoButton.setOnClickListener {
+            if (!undoLastEdit()) {
+                showMessage("Нечего отменять")
+            }
+        }
 
         waveformView
             .onViewportChanged =
@@ -1494,6 +1508,24 @@ class MainActivity : Activity() {
                 playbackPosition
             )
 
+        // Each playback gets its own clock: late reports of a replaced
+        // playback only reach their own (stopped) clock.
+        val clock =
+            PlayheadClock(
+                info.sampleRate
+            ).apply {
+                start(
+                    cursorFrame,
+                    safeEnd,
+                    System.nanoTime()
+                )
+            }
+
+        playheadClock =
+            clock
+
+        startPlayheadAnimation()
+
         player.play(
             context = this,
             info = info,
@@ -1502,20 +1534,36 @@ class MainActivity : Activity() {
             endFrameExclusive =
                 safeEnd,
             onProgress = {
-                position ->
-                runOnUiThread {
-                    playbackPosition =
-                        position
+                frame ->
+                // Timestamp taken on the player thread, not on arrival.
+                val reportedAt =
+                    System.nanoTime()
 
-                    waveformView
-                        .setPlaybackPosition(
-                            position
-                        )
+                runOnUiThread {
+                    clock.onReport(
+                        frame,
+                        reportedAt
+                    )
                 }
             },
             onFinished = {
                 error ->
                 runOnUiThread {
+                    if (
+                        clock.running &&
+                        playheadClock === clock &&
+                        error == null
+                    ) {
+                        showPlayheadFrame(
+                            info,
+                            clock.estimate(
+                                System.nanoTime()
+                            )
+                        )
+                    }
+
+                    clock.stop()
+
                     playbackActive =
                         false
 
@@ -1529,6 +1577,81 @@ class MainActivity : Activity() {
                 }
             }
         )
+    }
+
+    private var playheadClock:
+        PlayheadClock? = null
+
+    private var playheadAnimating =
+        false
+
+    /** Redraws the playhead on every display frame while playing. */
+    private val playheadFrame =
+        object : android.view.Choreographer.FrameCallback {
+            override fun doFrame(
+                frameTimeNanos: Long
+            ) {
+                val clock =
+                    playheadClock
+
+                val info =
+                    currentInfo
+
+                if (
+                    !playbackActive ||
+                    clock == null ||
+                    !clock.running ||
+                    info == null
+                ) {
+                    playheadAnimating =
+                        false
+
+                    return
+                }
+
+                showPlayheadFrame(
+                    info,
+                    clock.estimate(
+                        System.nanoTime()
+                    )
+                )
+
+                android.view.Choreographer
+                    .getInstance()
+                    .postFrameCallback(
+                        this
+                    )
+            }
+        }
+
+    private fun startPlayheadAnimation() {
+        if (playheadAnimating) return
+
+        playheadAnimating =
+            true
+
+        android.view.Choreographer
+            .getInstance()
+            .postFrameCallback(
+                playheadFrame
+            )
+    }
+
+    private fun showPlayheadFrame(
+        info: WavInfo,
+        frame: Long
+    ) {
+        if (info.totalFrames <= 0L) return
+
+        playbackPosition =
+            (frame.toDouble() / info.totalFrames.toDouble())
+                .toFloat()
+                .coerceIn(0f, 1f)
+
+        waveformView
+            .setPlaybackPosition(
+                playbackPosition
+            )
     }
 
     private fun deleteSelection() =
@@ -1969,6 +2092,10 @@ class MainActivity : Activity() {
         normalizeButton.isEnabled =
             hasFile
 
+        undoButton.isEnabled =
+            !recording &&
+                editHistory.isNotEmpty()
+
         saveAsButton.isEnabled =
             hasFile
 
@@ -1979,6 +2106,7 @@ class MainActivity : Activity() {
         applyEnabledAlpha(fadeInButton)
         applyEnabledAlpha(fadeOutButton)
         applyEnabledAlpha(normalizeButton)
+        applyEnabledAlpha(undoButton)
         applyEnabledAlpha(saveAsButton)
     }
 
@@ -2035,9 +2163,29 @@ class MainActivity : Activity() {
 
     /** Debounced: exact peaks for the visible window once zoomed in. */
     private fun scheduleDetailLoad() {
+        val (start, end) =
+            waveformView.visibleWindow()
+
+        // Still inside the loaded window: nothing to do. Matters while the
+        // view follows the playhead and changes on every frame.
+        if (waveformView.detailCovers(start, end)) return
+
+        if (playbackActive) {
+            // Throttle (not debounce) while scrolling with playback, else a
+            // reset on every frame would postpone the load forever.
+            if (!detailLoadPending) {
+                detailLoadPending = true
+                handler.postDelayed(detailLoader, DETAIL_DEBOUNCE_MS)
+            }
+            return
+        }
+
         handler.removeCallbacks(
             detailLoader
         )
+
+        detailLoadPending =
+            true
 
         handler.postDelayed(
             detailLoader,
@@ -2045,7 +2193,13 @@ class MainActivity : Activity() {
         )
     }
 
+    private var detailLoadPending =
+        false
+
     private fun loadDetailPeaks() {
+        detailLoadPending =
+            false
+
         val info =
             currentInfo ?: return
 
@@ -2063,15 +2217,19 @@ class MainActivity : Activity() {
             return
         }
 
-        // Load a window 3x the visible one so short pans stay detailed.
-        val margin =
+        // Load around the visible window so short pans stay detailed; while
+        // playing, load further ahead because the view scrolls forward.
+        val marginBefore =
             span
 
+        val marginAfter =
+            if (playbackActive) span * 4f else span
+
         val windowStart =
-            (start - margin).coerceAtLeast(0f)
+            (start - marginBefore).coerceAtLeast(0f)
 
         val windowEnd =
-            (end + margin).coerceAtMost(1f)
+            (end + marginAfter).coerceAtMost(1f)
 
         val total =
             info.totalFrames
@@ -2084,8 +2242,10 @@ class MainActivity : Activity() {
                 .toLong()
                 .coerceIn(startFrame + 1L, total)
 
+        // ~2 points per pixel across the whole loaded window.
         val points =
-            (waveformView.width * 3 * 2)
+            (waveformView.width * 2 * ((windowEnd - windowStart) / span))
+                .toInt()
                 .coerceIn(64, 20_000)
 
         val generation =
@@ -2127,8 +2287,10 @@ class MainActivity : Activity() {
     private fun applyEnabledAlpha(
         button: Button
     ) {
+        // Disabled look comes from the colour/drawable state lists now;
+        // extra alpha on top made labels unreadable.
         val alpha =
-            if (button.isEnabled) 1f else 0.42f
+            1f
 
         if (button.alpha != alpha) {
             button.alpha = alpha
@@ -2178,6 +2340,7 @@ class MainActivity : Activity() {
             fadeInButton.isEnabled = false
             fadeOutButton.isEnabled = false
             normalizeButton.isEnabled = false
+            undoButton.isEnabled = false
             saveAsButton.isEnabled = false
         } else {
             updateEditButtons(

@@ -30,7 +30,7 @@ class Pcm24Player {
         info: WavInfo,
         startFrame: Long,
         endFrameExclusive: Long,
-        onProgress: (Float) -> Unit,
+        onProgress: (Long) -> Unit,
         onFinished: (String?) -> Unit
     ) {
         stop()
@@ -151,7 +151,7 @@ class Pcm24Player {
         startFrame: Long,
         endFrameExclusive: Long,
         stop: AtomicBoolean,
-        onProgress: (Float) -> Unit
+        onProgress: (Long) -> Unit
     ) {
         val (safeStart, safeEnd) =
             WavEdit.clampRange(info.totalFrames, startFrame, endFrameExclusive)
@@ -167,10 +167,9 @@ class Pcm24Player {
         val pfd = context.contentResolver.openFileDescriptor(info.uri, "r")
             ?: error("Не удалось открыть WAV")
 
+        // Absolute frame of the file that is audible right now.
         fun report(playedFrames: Long) {
-            onProgress(
-                PlaybackMath.progress(safeStart, playedFrames, selectionFrames, totalFrames)
-            )
+            onProgress(safeStart + playedFrames.coerceIn(0L, selectionFrames))
         }
 
         pfd.use { descriptor ->
@@ -197,14 +196,18 @@ class Pcm24Player {
 
                     buffer.flip()
 
+                    // Small writes: a blocking write returns as soon as ~21 ms
+                    // of space frees up, so the position is reported ~50x/s
+                    // instead of once per ~340 ms buffer.
+                    val chunkBytes = WRITE_CHUNK_FRAMES * frameSize
                     while (buffer.hasRemaining() && !stop.get()) {
                         val written = track.write(
                             buffer,
-                            buffer.remaining(),
+                            min(buffer.remaining(), chunkBytes),
                             AudioTrack.WRITE_BLOCKING
                         )
                         if (written < 0) error("AudioTrack.write(): $written")
-                        report(headFrames(track))
+                        report(presentedFrames(track, info.sampleRate))
                     }
 
                     remaining -= requested
@@ -236,7 +239,7 @@ class Pcm24Player {
 
         while (!stop.get()) {
             val head = headFrames(track).coerceAtMost(selectionFrames)
-            report(head)
+            report(presentedFrames(track, sampleRate).coerceAtMost(selectionFrames))
 
             if (head >= selectionFrames) return
 
@@ -270,8 +273,23 @@ class Pcm24Player {
     private fun headFrames(track: AudioTrack): Long =
         track.playbackHeadPosition.toLong() and 0xffffffffL
 
+    /**
+     * Frame being presented at the speaker now, from AudioTrack.getTimestamp
+     * (latency-compensated, fine-grained); falls back to the head position.
+     * Only used for display; drain/stall logic keeps the raw head.
+     */
+    private fun presentedFrames(track: AudioTrack, sampleRate: Int): Long {
+        // Fresh object per call: workers of consecutive playbacks may overlap.
+        val timestamp = android.media.AudioTimestamp()
+        val ok = runCatching { track.getTimestamp(timestamp) }.getOrDefault(false)
+        if (!ok || timestamp.nanoTime <= 0L) return headFrames(track)
+        val sinceNanos = (System.nanoTime() - timestamp.nanoTime).coerceAtLeast(0L)
+        return PlaybackMath.presentedFrame(timestamp.framePosition, sinceNanos, sampleRate)
+    }
+
     companion object {
         private const val PROGRESS_POLL_MS = 20L
+        private const val WRITE_CHUNK_FRAMES = 1_024
         private const val STALL_TIMEOUT_MS = 300L
         private const val DRAIN_MARGIN_MS = 50L
     }
@@ -285,6 +303,10 @@ object PlaybackMath {
         val remainder = value % alignment
         return if (remainder == 0) value else value + alignment - remainder
     }
+
+    /** Frame position extrapolated [sinceNanos] past a timestamp. */
+    fun presentedFrame(framePosition: Long, sinceNanos: Long, sampleRate: Int): Long =
+        (framePosition + sinceNanos.coerceAtLeast(0L) * sampleRate / 1_000_000_000L).coerceAtLeast(0L)
 
     fun framesToMs(frames: Long, sampleRate: Int): Long =
         if (sampleRate <= 0 || frames <= 0L) 0L else (frames * 1000L + sampleRate - 1) / sampleRate
